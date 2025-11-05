@@ -19,7 +19,16 @@ const port = process.env.PORT || 4000;
 // middlewares
 app.use(express.json());
 app.use(cors({
-  origin: ['http://localhost:5175', 'http://localhost:5174', 'http://localhost:3000', 'http://localhost:5173'],
+  origin: [
+    'http://localhost:5175', 
+    'http://localhost:5174', 
+    'http://localhost:3000', 
+    'http://localhost:5173',
+    'https://meddirect-frontend.onrender.com',
+    'https://meddirect-admin.onrender.com',
+    process.env.FRONTEND_URL,
+    process.env.ADMIN_URL
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'token', 'aToken', 'dToken']
@@ -37,6 +46,17 @@ app.use("/api/medication", medicationRouter);
 
 app.get("/", (req, res) => {
   res.send("MEDDIRECT API WORKING");
+});
+
+// Health check endpoint for Render
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    service: "MedDirect Backend API",
+    version: "1.0.0",
+    uptime: process.uptime()
+  });
 });
 
 // Test endpoint for OpenFDA API
