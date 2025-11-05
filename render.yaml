@@ -62,3 +62,6 @@ services:
       - key: VITE_BACKEND_URL
         value: "https://meddirect-backend.onrender.com"
       # Add your admin environment variables here
+"scripts": {
+  "postinstall": "npm rebuild bcrypt --build-from-source"
+}
