@@ -621,6 +621,10 @@ Render is a modern cloud platform that makes deploying full-stack applications s
 
 #### 📋 Step-by-Step Render Deployment
 
+> **📖 Detailed Guide**: For comprehensive step-by-step instructions, see [RENDER_MANUAL_DEPLOYMENT.md](RENDER_MANUAL_DEPLOYMENT.md)
+
+> **⚠️ Important**: The `render.yaml` file is provided for reference, but manual deployment through the Render dashboard is recommended for better control and troubleshooting.
+
 ##### 1. Prepare Your Repository
 
 ```bash
@@ -633,12 +637,14 @@ git push origin main
 ##### 2. Deploy Backend API (Web Service)
 
 1. **Create New Web Service**
+
    - Go to [Render Dashboard](https://dashboard.render.com/)
    - Click "New +" → "Web Service"
    - Connect your GitHub repository
    - Select your repository and branch (`main`)
 
 2. **Configure Backend Service**
+
    ```
    Name: meddirect-backend
    Runtime: Node
@@ -647,38 +653,39 @@ git push origin main
    ```
 
 3. **Set Environment Variables**
+
    ```bash
    # Database
    MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/meddirect
-   
+
    # Authentication
    JWT_SECRET=your_super_secure_jwt_secret_minimum_32_characters
    ADMIN_EMAIL=admin@meddirect.com
    ADMIN_PASSWORD=your_secure_admin_password
-   
+
    # Cloudinary
    CLOUDINARY_NAME=your_cloudinary_cloud_name
    CLOUDINARY_API_KEY=your_cloudinary_api_key
    CLOUDINARY_API_SECRET=your_cloudinary_api_secret
-   
+
    # Stripe
    STRIPE_SECRET_KEY=sk_live_your_stripe_secret_key
-   
+
    # Razorpay
    RAZORPAY_KEY_ID=rzp_live_your_key_id
    RAZORPAY_KEY_SECRET=your_razorpay_secret
-   
+
    # Instamojo
    INSTAMOJO_CLIENT_ID=your_instamojo_client_id
    INSTAMOJO_CLIENT_SECRET=your_instamojo_client_secret
-   
+
    # OpenFDA
    OPENFDA_API_KEY=your_openfda_api_key
-   
+
    # Frontend URLs (for CORS)
    FRONTEND_URL=https://meddirect-frontend.onrender.com
    ADMIN_URL=https://meddirect-admin.onrender.com
-   
+
    # Production settings
    NODE_ENV=production
    PORT=4001
@@ -693,10 +700,12 @@ git push origin main
 ##### 3. Deploy Frontend (Static Site)
 
 1. **Create New Static Site**
+
    - Click "New +" → "Static Site"
    - Connect same GitHub repository
 
 2. **Configure Frontend Service**
+
    ```
    Name: meddirect-frontend
    Build Command: cd clientside && npm install && npm run build
@@ -718,10 +727,12 @@ git push origin main
 ##### 4. Deploy Admin Panel (Static Site)
 
 1. **Create New Static Site**
+
    - Click "New +" → "Static Site"
    - Connect same GitHub repository
 
 2. **Configure Admin Service**
+
    ```
    Name: meddirect-admin
    Build Command: cd admin && npm install && npm run build
@@ -757,11 +768,13 @@ After successful deployment, your services will be available at:
 #### 🔍 Monitoring & Troubleshooting
 
 1. **View Logs**
+
    ```
    Dashboard → Your Service → Logs
    ```
 
 2. **Health Check**
+
    ```
    GET https://meddirect-backend.onrender.com/api/health
    ```
@@ -785,6 +798,7 @@ After successful deployment, your services will be available at:
 **Backend Deployment (Vercel)**
 
 1. **Prepare for deployment**
+
    ```bash
    # Create vercel.json in backend folder
    {
@@ -876,6 +890,7 @@ CMD ["nginx", "-g", "daemon off;"]
 ### 📈 Post-Deployment Steps
 
 1. **Test All Features**
+
    - User registration/login
    - Doctor booking
    - Payment processing
@@ -883,11 +898,13 @@ CMD ["nginx", "-g", "daemon off;"]
    - Admin functionality
 
 2. **Set Up Monitoring**
+
    - Configure error tracking (Sentry)
    - Set up uptime monitoring
    - Enable performance tracking
 
 3. **Domain Configuration** (Optional)
+
    - Purchase custom domain
    - Configure DNS records
    - Set up SSL certificates

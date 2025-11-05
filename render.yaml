@@ -1,73 +1,64 @@
-# Render deployment configuration for MedDirect
+# Render Blueprint for MedDirect
+#
+# ⚠️  IMPORTANT NOTE:
+# This render.yaml file is provided as a reference template.
+# For production deployment, we recommend using the manual deployment
+# approach described in RENDER_MANUAL_DEPLOYMENT.md for better control
+# over environment variables and configuration.
+#
+# The manual approach allows you to:
+# 1. Set sensitive environment variables securely
+# 2. Configure each service individually
+# 3. Troubleshoot issues more easily
+# 4. Control deployment order
+#
+# To use this file:
+# 1. Update all environment variables with your actual values
+# 2. Commit to your repository
+# 3. Import the blueprint in Render dashboard
+
 services:
   # Backend API Service
   - type: web
     name: meddirect-backend
     runtime: node
+    plan: free
+    region: oregon
     buildCommand: cd backend && npm install
     startCommand: cd backend && npm start
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 4001
-      - key: MONGODB_URI
-        fromDatabase:
-          name: meddirect-db
-          property: connectionString
-      - key: JWT_SECRET
-        generateValue: true
-      - key: CLOUDINARY_NAME
-        sync: false
-      - key: CLOUDINARY_API_KEY
-        sync: false
-      - key: CLOUDINARY_API_SECRET
-        sync: false
-      - key: STRIPE_SECRET_KEY
-        sync: false
-      - key: RAZORPAY_KEY_ID
-        sync: false
-      - key: RAZORPAY_KEY_SECRET
-        sync: false
-      - key: INSTAMOJO_CLIENT_ID
-        sync: false
-      - key: INSTAMOJO_CLIENT_SECRET
-        sync: false
-      - key: OPENFDA_API_KEY
-        sync: false
-    healthCheckPath: /api/health
-    
-  # Frontend Web Service
-  - type: web
+        value: 10000
+      # Add your environment variables here:
+      # - key: MONGODB_URI
+      #   value: your_mongodb_connection_string
+      # - key: JWT_SECRET
+      #   value: your_jwt_secret
+      # See RENDER_MANUAL_DEPLOYMENT.md for complete list
+
+  # Frontend Static Site
+  - type: static
     name: meddirect-frontend
-    runtime: node
+    plan: free
+    region: oregon
     buildCommand: cd clientside && npm install && npm run build
     staticPublishPath: ./clientside/dist
     envVars:
       - key: VITE_BACKEND_URL
         value: https://meddirect-backend.onrender.com
-      - key: VITE_GOOGLE_CLIENT_ID
-        sync: false
-      - key: VITE_STRIPE_PUBLISHABLE_KEY
-        sync: false
-      - key: VITE_RAZORPAY_KEY_ID
-        sync: false
-      - key: VITE_GOOGLE_MAPS_API_KEY
-        sync: false
-      - key: VITE_OPENFDA_API_KEY
-        sync: false
-        
-  # Admin Panel Web Service
-  - type: web
+      # Add your frontend environment variables here
+
+  # Admin Panel Static Site
+  - type: static
     name: meddirect-admin
-    runtime: node
+    plan: free
+    region: oregon
     buildCommand: cd admin && npm install && npm run build
     staticPublishPath: ./admin/dist
     envVars:
       - key: VITE_BACKEND_URL
         value: https://meddirect-backend.onrender.com
-
-databases:
-  - name: meddirect-db
-    databaseName: meddirect
-    user: meddirect-user
+      # Add your admin environment variables here

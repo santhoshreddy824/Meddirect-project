@@ -182,14 +182,18 @@ Write-Host "🎉 Deployment preparation complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "📋 Next Steps:" -ForegroundColor Yellow
 Write-Host "1. Go to https://dashboard.render.com/"
-Write-Host "2. Create new Web Service for backend (meddirect-backend)"
-Write-Host "3. Create new Static Site for frontend (meddirect-frontend)" 
-Write-Host "4. Create new Static Site for admin (meddirect-admin)"
-Write-Host "5. Configure environment variables for each service"
+Write-Host "2. Follow the manual deployment guide: RENDER_MANUAL_DEPLOYMENT.md"
+Write-Host "3. Create services in this order:"
+Write-Host "   a) Backend API (Web Service): meddirect-backend"
+Write-Host "   b) Frontend (Static Site): meddirect-frontend" 
+Write-Host "   c) Admin Panel (Static Site): meddirect-admin"
 Write-Host ""
 Write-Host "📚 For detailed instructions, check:" -ForegroundColor Yellow
+Write-Host "- RENDER_MANUAL_DEPLOYMENT.md (Recommended step-by-step guide)"
 Write-Host "- README.md (Deployment section)"
-Write-Host "- RENDER_DEPLOYMENT_CHECKLIST.md"
+Write-Host "- RENDER_DEPLOYMENT_CHECKLIST.md (Verification checklist)"
+Write-Host ""
+Write-Host "⚠️  Note: Manual deployment is recommended over render.yaml for better control" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "🔗 Your repository is ready for Render deployment!" -ForegroundColor Green
 Write-Host ""
