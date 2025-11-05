@@ -12,7 +12,8 @@ axios.defaults.timeout = 10000; // 10 seconds timeout
 axios.defaults.headers.common["Content-Type"] = "application/json";
 
 const Login = () => {
-  const { backendUrl, token, setToken } = useContext(AppContext);
+  const { backendUrl, token, setToken, clearInvalidToken } =
+    useContext(AppContext);
   const navigate = useNavigate();
 
   const [state, setState] = useState("Sign Up");
@@ -29,6 +30,20 @@ const Login = () => {
   // CAPTCHA state
   const [captchaToken, setCaptchaToken] = useState(null);
   const [captchaVerified, setCaptchaVerified] = useState(false);
+
+  // Clear any invalid tokens on login page load
+  useEffect(() => {
+    const storedToken = localStorage.getItem("token");
+    if (storedToken) {
+      // Check if token is valid format
+      const parts = storedToken.split(".");
+      if (parts.length !== 3) {
+        console.log("🧹 Clearing invalid token from login page");
+        clearInvalidToken();
+        toast.info("Previous session was invalid. Please login again.");
+      }
+    }
+  }, [clearInvalidToken]);
 
   // Test backend connection on component mount
   const testConnection = useCallback(async () => {
@@ -69,8 +84,30 @@ const Login = () => {
   const onSubmitHandler = async (event) => {
     event.preventDefault();
 
+    // Clear any previous error states
+    setConnectionStatus("connected");
+
     // Validation for sign up
     if (state === "Sign Up") {
+      // Validate name
+      if (!name || name.trim().length < 2) {
+        toast.error("Please enter a valid name (at least 2 characters)");
+        return;
+      }
+
+      // Validate email
+      if (!email || !email.includes("@")) {
+        toast.error("Please enter a valid email address");
+        return;
+      }
+
+      // Validate password
+      if (!password || password.length < 8) {
+        toast.error("Password must be at least 8 characters long");
+        return;
+      }
+
+      // Check terms and privacy acceptance
       if (!acceptedTerms || !acceptedPrivacy) {
         toast.error(
           "Please accept the Terms and Conditions and Privacy Policy to continue."
@@ -78,16 +115,29 @@ const Login = () => {
         return;
       }
 
+      // Check CAPTCHA (only for sign up)
       if (!captchaVerified) {
         toast.error("Please complete the CAPTCHA verification.");
+        return;
+      }
+    } else {
+      // Login validation
+      if (!email || !email.includes("@")) {
+        toast.error("Please enter a valid email address");
+        return;
+      }
+
+      if (!password || password.length < 1) {
+        toast.error("Please enter your password");
         return;
       }
     }
 
     try {
-      console.log("🔐 Login attempt starting...");
+      console.log("🔐 Authentication attempt starting...");
       console.log("Backend URL:", backendUrl);
       console.log("State:", state);
+      console.log("Email:", email);
 
       if (!backendUrl) {
         toast.error(
@@ -98,44 +148,109 @@ const Login = () => {
 
       if (state === "Sign Up") {
         console.log("📝 Attempting user registration...");
-        const { data } = await axios.post(backendUrl + "/api/user/register", {
-          name,
-          email,
+
+        const registrationData = {
+          name: name.trim(),
+          email: email.toLowerCase().trim(),
           password,
           captchaToken,
+        };
+
+        console.log("Registration data:", {
+          ...registrationData,
+          password: "[HIDDEN]",
         });
+
+        const { data } = await axios.post(
+          backendUrl + "/api/user/register",
+          registrationData,
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+            timeout: 15000, // 15 seconds timeout
+          }
+        );
+
+        console.log("Registration response:", data);
+
         if (data.success) {
           localStorage.setItem("token", data.token);
           setToken(data.token);
-          toast.success("Account created successfully!");
+          toast.success("Account created successfully! Welcome to MedDirect!");
+
+          // Clear form
+          setName("");
+          setEmail("");
+          setPassword("");
+          setCaptchaToken(null);
+          setCaptchaVerified(false);
+          setAcceptedTerms(false);
+          setAcceptedPrivacy(false);
         } else {
-          toast.error(data.message);
+          toast.error(data.message || "Registration failed. Please try again.");
         }
       } else {
         console.log("🔑 Attempting user login...");
-        const { data } = await axios.post(backendUrl + "/api/user/login", {
-          email,
+
+        const loginData = {
+          email: email.toLowerCase().trim(),
           password,
-        });
+        };
+
+        console.log("Login data:", { ...loginData, password: "[HIDDEN]" });
+
+        const { data } = await axios.post(
+          backendUrl + "/api/user/login",
+          loginData,
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+            timeout: 15000, // 15 seconds timeout
+          }
+        );
+
+        console.log("Login response:", data);
+
         if (data.success) {
           localStorage.setItem("token", data.token);
           setToken(data.token);
-          toast.success("Login successful!");
+          toast.success("Login successful! Welcome back!");
+
+          // Clear form
+          setEmail("");
+          setPassword("");
         } else {
-          toast.error(data.message);
+          toast.error(
+            data.message || "Login failed. Please check your credentials."
+          );
         }
       }
     } catch (error) {
-      console.error("❌ Login error:", error);
-      console.error("❌ Error response:", error.response);
+      console.error("❌ Authentication error:", error);
+      console.error("❌ Error response:", error.response?.data);
+      console.error("❌ Error status:", error.response?.status);
       console.error("❌ Error message:", error.message);
-      console.error("❌ Network error:", error.code);
 
-      let errorMessage = "An error occurred";
+      let errorMessage = "An error occurred during authentication";
 
-      if (error.code === "ERR_NETWORK" || error.code === "NETWORK_ERROR") {
+      if (error.code === "ECONNABORTED") {
         errorMessage =
-          "Network error: Cannot connect to server. Please check if the server is running.";
+          "Request timeout. Please check your internet connection and try again.";
+      } else if (
+        error.code === "ERR_NETWORK" ||
+        error.code === "NETWORK_ERROR"
+      ) {
+        errorMessage =
+          "Network error: Cannot connect to server. Please check if the server is running on http://localhost:4001";
+        setConnectionStatus("failed");
+      } else if (error.response?.status === 400) {
+        errorMessage =
+          error.response.data?.message ||
+          "Invalid request. Please check your input.";
+      } else if (error.response?.status === 500) {
+        errorMessage = "Server error. Please try again later.";
       } else if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       } else if (error.message) {
@@ -143,6 +258,12 @@ const Login = () => {
       }
 
       toast.error(errorMessage);
+
+      // Reset CAPTCHA on error for sign up
+      if (state === "Sign Up") {
+        setCaptchaVerified(false);
+        setCaptchaToken(null);
+      }
     }
   };
 

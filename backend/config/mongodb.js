@@ -17,6 +17,11 @@ const connectDB = async () => {
       throw new Error("❌ MONGODB_URI not found in environment variables");
     }
 
+    // Check if MongoDB URI is still the placeholder
+    if (mongoUri === 'mongodb+srv://username:password@cluster.mongodb.net/database') {
+      throw new Error("❌ Please configure a real MongoDB URI in your .env file. Current URI is a placeholder.");
+    }
+
     // Connection options with better error handling
     const options = {
       serverSelectionTimeoutMS: 10000, // 10 seconds
@@ -46,6 +51,10 @@ const connectDB = async () => {
     
   } catch (error) {
     console.error("❌ Failed to connect to MongoDB:", error.message);
+    console.log("💡 To fix this:");
+    console.log("1. Create a MongoDB Atlas account at https://cloud.mongodb.com");
+    console.log("2. Create a cluster and get your connection string");
+    console.log("3. Update MONGODB_URI in your .env file");
     throw error;
   }
 };

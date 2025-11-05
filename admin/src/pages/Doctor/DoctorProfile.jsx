@@ -1,6 +1,6 @@
 import { useContext, useEffect, useState } from "react";
 import { DoctorContext } from "../../context/DoctorContext";
-import DoctorImage from "./DoctorImage";
+import DoctorImage from "../../components/DoctorImage";
 import axios from "axios";
 import { toast } from "react-toastify";
 

@@ -156,8 +156,6 @@ const MedicationGuide = () => {
     }
 
     setIsSearching(true);
-    console.log(`🔍 Starting search for: "${searchTerm}"`);
-    console.log(`🌐 Backend URL: ${backendUrl}`);
 
     let apiResults = [];
     let staticResults = [];
@@ -165,18 +163,11 @@ const MedicationGuide = () => {
     try {
       // Try API search first
       if (backendUrl) {
-        console.log(
-          `📡 Calling API: ${backendUrl}/api/medication/search/${encodeURIComponent(
-            searchTerm.trim()
-          )}`
-        );
         const response = await axios.get(
           `${backendUrl}/api/medication/search/${encodeURIComponent(
             searchTerm.trim()
           )}`
         );
-
-        console.log(`✅ API Response:`, response.data);
 
         if (response.data.success && response.data.medicines) {
           const medicines = response.data.medicines;
@@ -220,14 +211,11 @@ const MedicationGuide = () => {
             fdaApproved: med.fdaApproved !== false,
             source: med.source || "FDA API",
           }));
-
-          console.log(`✅ Formatted API results:`, apiResults);
         }
       } else {
-        console.log(`⚠️ No backend URL configured`);
+        toast.warning("No backend URL configured");
       }
-    } catch (error) {
-      console.error("❌ API search error:", error);
+    } catch {
       toast.warning("API search failed, showing local results");
     }
 
@@ -280,7 +268,6 @@ const MedicationGuide = () => {
         self.findIndex((m) => m.name.toLowerCase() === med.name.toLowerCase())
     );
 
-    console.log(`📊 Final results:`, uniqueResults);
     setSearchResults(uniqueResults);
 
     if (uniqueResults.length === 0) {
@@ -463,12 +450,9 @@ const MedicationGuide = () => {
                   </button>
                   <button
                     onClick={() => {
-                      console.log("🔧 Debug Info:");
-                      console.log("Backend URL:", backendUrl);
-                      console.log("Search Term:", searchTerm);
-                      console.log("Search Results:", searchResults);
-                      console.log("Selected Medication:", selectedMedication);
                       toast.info(`Backend URL: ${backendUrl || "Not set"}`);
+                      toast.info(`Current search: ${searchTerm || "None"}`);
+                      toast.info(`Results count: ${searchResults.length}`);
                     }}
                     className="bg-white/70 hover:bg-yellow-50 text-yellow-700 text-xs px-3 py-2 rounded-lg font-medium border border-yellow-200 hover:border-yellow-300 transition-all duration-200 hover:scale-105"
                   >

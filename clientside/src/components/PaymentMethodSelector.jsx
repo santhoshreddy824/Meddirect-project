@@ -20,9 +20,11 @@ const PaymentMethodSelector = ({
       // For demo, simulate a successful payment after 1s
       setTimeout(() => {
         onPaymentSuccess({
-          paymentMethod: selectedMethod,
-          paid: true,
+          paymentMethod: selectedMethod, // Fixed to match backend expectations
+          paid: selectedMethod !== "pay_later",
           paymentId: `${selectedMethod}-demo-${Date.now()}`,
+          amount: amount,
+          appointmentId: appointmentId,
         });
         setIsProcessing(false);
       }, 1000);

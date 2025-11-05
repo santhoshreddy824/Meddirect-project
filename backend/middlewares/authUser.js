@@ -31,19 +31,27 @@ const authUser = async (req, res, next) => {
     next();
   } catch (error) {
     console.log("❌ AUTH ERROR:", error.message);
-    console.log("Token that failed:", req.headers.token?.substring(0, 20) + "...");
     
     // Provide more specific error messages
     let errorMessage = "Authentication failed";
     if (error.name === "JsonWebTokenError") {
-      errorMessage = "Invalid token format";
+      if (error.message.includes("invalid signature")) {
+        errorMessage = "Session expired due to security update - please login again";
+        console.log("🔄 Invalid signature detected - likely due to JWT_SECRET change");
+      } else {
+        errorMessage = "Invalid token format";
+      }
     } else if (error.name === "TokenExpiredError") {
       errorMessage = "Token has expired";
     } else if (error.message.includes("jwt malformed")) {
       errorMessage = "Invalid token - please login again";
     }
     
-    res.json({ success: false, message: errorMessage });
+    res.json({ 
+      success: false, 
+      message: errorMessage,
+      code: error.name === "JsonWebTokenError" && error.message.includes("invalid signature") ? "INVALID_SIGNATURE" : "AUTH_ERROR"
+    });
   }
 };
 

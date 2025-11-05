@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "react-toastify";
 import QuickMedicineSearch from "../components/QuickMedicineSearch";
 import medicineAPI from "../services/medicineAPI";
 
@@ -20,10 +21,10 @@ const MedicineDemo = () => {
       if (details.success) {
         setMedicineDetails(details);
       } else {
-        console.error("Failed to fetch medicine details:", details.message);
+        toast.error("Failed to fetch medicine details: " + details.message);
       }
     } catch (error) {
-      console.error("Error fetching medicine details:", error);
+      toast.error("Error fetching medicine details: " + error.message);
     } finally {
       setIsLoading(false);
     }

@@ -8,6 +8,7 @@ import doctorRouter from "./routes/doctorRoute.js";
 import userRouter from "./routes/userRoute.js";
 import paymentRouter from "./routes/paymentRoute.js";
 import medicationRouter from "./routes/medicationRoute.js";
+import hospitalRouter from "./routes/hospitalRoute.js";
 
 // Load environment variables explicitly
 dotenv.config();
@@ -43,6 +44,7 @@ app.use("/api/doctor", doctorRouter);
 app.use("/api/user", userRouter);
 app.use("/api/payment", paymentRouter);
 app.use("/api/medication", medicationRouter);
+app.use("/api/hospital", hospitalRouter);
 
 app.get("/", (req, res) => {
   res.send("MEDDIRECT API WORKING");
@@ -84,8 +86,17 @@ app.get("/test-fda", async (req, res) => {
 const initializeAndStart = async () => {
   try {
     console.log("🔄 Initializing connections...");
+    
+    // Try to connect to MongoDB (required)
     await connectDB();
-    await connectCloudinary();
+    
+    // Try to connect to Cloudinary (optional)
+    try {
+      await connectCloudinary();
+    } catch (cloudinaryError) {
+      console.log("⚠️ Cloudinary setup skipped - image uploads will be limited");
+    }
+    
     console.log("✅ All connections initialized successfully");
     
     // Start server after successful connections
@@ -99,12 +110,18 @@ const initializeAndStart = async () => {
       console.log(`   - Payment: http://localhost:${port}/api/payment`);
       console.log(`   - Medication: http://localhost:${port}/api/medication`);
       console.log(`🧪 Test endpoints:`);
+      console.log(`   - Health Check: http://localhost:${port}/api/health`);
       console.log(`   - FDA Test: http://localhost:${port}/test-fda`);
       console.log(`   - Doctor List: http://localhost:${port}/api/doctor/list`);
-      console.log(`   - FDA Search: http://localhost:${port}/api/medication/fda/search/aspirin`);
     });
   } catch (error) {
-    console.error("❌ Failed to initialize connections:", error);
+    console.error("❌ Failed to initialize connections:", error.message);
+    console.log("");
+    console.log("🔧 TROUBLESHOOTING:");
+    console.log("1. Check your .env file has correct MongoDB URI");
+    console.log("2. See backend/SETUP_GUIDE.md for detailed setup instructions");
+    console.log("3. Ensure MongoDB Atlas cluster is running and accessible");
+    console.log("");
     process.exit(1);
   }
 };

@@ -1,27 +1,32 @@
-// Simple Firebase token verification without service account
-// For production, you should use proper Firebase Admin SDK with service account
+// Dev-friendly Firebase ID token verification without service account
+// NOTE: This decodes and performs basic checks only. For production, replace with Firebase Admin SDK verification.
+
+const base64UrlToJson = (segment) => {
+  // Add padding if missing
+  const pad = segment.length % 4;
+  const padded = segment + (pad ? '='.repeat(4 - pad) : '');
+  const b64 = padded.replace(/-/g, '+').replace(/_/g, '/');
+  const json = Buffer.from(b64, 'base64').toString('utf8');
+  return JSON.parse(json);
+};
 
 export const verifyFirebaseToken = async (idToken) => {
   try {
-    // Simple JWT decode to get basic user info
-    // In production, use Firebase Admin SDK for proper verification
-    const base64Url = idToken.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-
-    const payload = JSON.parse(jsonPayload);
-    
-    // Basic validation - check if token is for our Firebase project
-    if (payload.aud !== "meddirect-7ff5f") {
-      throw new Error("Invalid audience");
+    if (!idToken || typeof idToken !== 'string' || idToken.split('.').length < 2) {
+      throw new Error('Malformed token');
     }
 
-    // Check if token is not expired
+    const payload = base64UrlToJson(idToken.split('.')[1]);
+
+    // Basic validation - check audience and expiration
+    const expectedAud = process.env.FIREBASE_PROJECT_ID || 'meddirect-7ff5f';
+    if (payload.aud !== expectedAud) {
+      throw new Error('Invalid audience');
+    }
+
     const now = Math.floor(Date.now() / 1000);
-    if (payload.exp < now) {
-      throw new Error("Token expired");
+    if (payload.exp && payload.exp < now) {
+      throw new Error('Token expired');
     }
 
     return {
@@ -31,6 +36,6 @@ export const verifyFirebaseToken = async (idToken) => {
       picture: payload.picture
     };
   } catch (error) {
-    throw new Error("Invalid Firebase token");
+    throw new Error('Invalid Firebase token');
   }
 };

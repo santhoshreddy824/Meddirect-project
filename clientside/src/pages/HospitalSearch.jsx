@@ -1,19 +1,36 @@
-import React, { useState, useEffect } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useContext,
+  useRef,
+} from "react";
 import { assets } from "../assets/assets";
 import { toast } from "react-toastify";
+import { useNavigate } from "react-router-dom";
+import { AppContext } from "../context/AppContext";
 import HospitalLocationService from "../services/hospitalLocationService";
 
 const HospitalSearch = () => {
+  const navigate = useNavigate();
+  const { backendUrl } = useContext(AppContext);
+  const googleApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
   const [location, setLocation] = useState("");
   const [userLocation, setUserLocation] = useState(null);
   const [hospitals, setHospitals] = useState([]);
+  const [featuredHospitals, setFeaturedHospitals] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [searchRadius, setSearchRadius] = useState(5000); // meters
+  const [searchRadius, setSearchRadius] = useState(10); // kilometers
+  const searchDebounceRef = useRef(null);
   const [filterType, setFilterType] = useState("all");
   const [sortBy, setSortBy] = useState("distance");
   const [hasSearched, setHasSearched] = useState(false);
+  const locationInputRef = useRef(null);
 
-  const hospitalService = new HospitalLocationService();
+  const hospitalService = useMemo(() => new HospitalLocationService(), []);
+  const enrichedSetRef = useRef(new Set());
 
   const getCurrentLocation = async () => {
     setLoading(true);
@@ -24,8 +41,8 @@ const HospitalSearch = () => {
         `${position.latitude.toFixed(4)}, ${position.longitude.toFixed(4)}`
       );
 
-      // Automatically search for hospitals after getting location
-      await searchNearbyHospitals(position.latitude, position.longitude);
+      // Search in database first, then external APIs if needed
+      await searchDatabaseHospitals(position.latitude, position.longitude);
       toast.success("Location found and hospitals loaded!");
     } catch (error) {
       toast.error(error.message);
@@ -35,54 +52,150 @@ const HospitalSearch = () => {
     }
   };
 
-  const searchNearbyHospitals = async (lat, lng) => {
-    try {
-      setLoading(true);
-      const results = await hospitalService.searchNearbyHospitals(
-        lat,
-        lng,
-        searchRadius,
-        {
-          includeGovernmentData: true,
-        }
-      );
-
-      let filteredResults = results;
-
-      // Apply filters
-      if (filterType === "emergency") {
-        filteredResults = results.filter((h) => h.emergencyServices);
-      } else if (filterType === "specialty") {
-        filteredResults = results.filter(
-          (h) => h.specialties && h.specialties.length > 0
-        );
-      }
-
-      // Apply sorting
-      if (sortBy === "rating") {
-        filteredResults.sort((a, b) => (b.rating || 0) - (a.rating || 0));
-      } else if (sortBy === "name") {
-        filteredResults.sort((a, b) => a.name.localeCompare(b.name));
-      }
-      // Default is already sorted by distance
-
-      setHospitals(filteredResults);
-      setHasSearched(true);
-
-      if (filteredResults.length === 0) {
-        toast.info(
-          "No hospitals found in the specified area. Try increasing the search radius."
-        );
-      } else {
-        toast.success(`Found ${filteredResults.length} hospitals near you!`);
-      }
-    } catch (error) {
-      toast.error("Error searching for hospitals: " + error.message);
-      console.error("Hospital search error:", error);
-    } finally {
-      setLoading(false);
+  const triggerManualSearch = (immediate = false) => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+    if (immediate) {
+      handleManualSearch();
+    } else {
+      searchDebounceRef.current = setTimeout(() => {
+        handleManualSearch();
+        searchDebounceRef.current = null;
+      }, 400);
     }
   };
+
+  const searchExternalHospitals = useCallback(
+    async (lat, lng) => {
+      try {
+        setLoading(true);
+        const results = await hospitalService.searchNearbyHospitals(
+          lat,
+          lng,
+          searchRadius * 1000, // Convert km to meters for external service
+          {
+            includeGovernmentData: true,
+          }
+        );
+
+        let filteredResults = results;
+
+        // Apply filters
+        if (filterType === "emergency") {
+          filteredResults = results.filter((h) => h.emergencyServices);
+        } else if (filterType === "specialty") {
+          filteredResults = results.filter(
+            (h) => h.specialties && h.specialties.length > 0
+          );
+        }
+
+        // Apply sorting
+        if (sortBy === "rating") {
+          filteredResults.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+        } else if (sortBy === "name") {
+          filteredResults.sort((a, b) => a.name.localeCompare(b.name));
+        }
+        // Default is already sorted by distance
+
+        setHospitals(filteredResults);
+        setHasSearched(true);
+
+        if (filteredResults.length === 0) {
+          toast.info(
+            "No hospitals found in the specified area. Try increasing the search radius."
+          );
+        } else {
+          toast.success(
+            `Found ${filteredResults.length} hospitals from external sources!`
+          );
+        }
+      } catch (error) {
+        toast.error("Error searching for hospitals: " + error.message);
+        console.error("External hospital search error:", error);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [searchRadius, filterType, sortBy, hospitalService]
+  );
+
+  const searchDatabaseHospitals = useCallback(
+    async (lat, lng) => {
+      try {
+        setLoading(true);
+
+        const params = new URLSearchParams({
+          lat: lat.toString(),
+          lng: lng.toString(),
+          radius: searchRadius.toString(),
+          sortBy: sortBy,
+        });
+
+        if (filterType !== "all") {
+          if (filterType === "emergency") {
+            params.append("emergency", "true");
+          }
+        }
+
+        const response = await fetch(
+          `${backendUrl}/api/hospital/nearby?${params}`
+        );
+        const data = await response.json();
+
+        if (data.success) {
+          let results = data.hospitals;
+
+          // Apply client-side filtering if needed
+          if (filterType === "government") {
+            results = results.filter((h) => h.type === "government");
+          } else if (filterType === "private") {
+            results = results.filter((h) => h.type === "private");
+          }
+
+          setHospitals(results);
+          setHasSearched(true);
+
+          if (results.length === 0) {
+            toast.info(
+              "No hospitals found in database. Searching external sources..."
+            );
+            // Fallback to external API search but cap wait time to avoid long blocking
+            const timeoutMs = 6000;
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error("External search timed out")),
+                timeoutMs
+              )
+            );
+            try {
+              await Promise.race([
+                searchExternalHospitals(lat, lng),
+                timeoutPromise,
+              ]);
+            } catch (err) {
+              console.warn("External hospital search timeout or error:", err);
+              toast.warn(
+                "External search is taking too long. Try increasing the radius or try again."
+              );
+            }
+          } else {
+            toast.success(`Found ${results.length} hospitals in our database!`);
+          }
+        } else {
+          throw new Error(data.message || "Failed to fetch hospitals");
+        }
+      } catch (error) {
+        console.error("Database search error:", error);
+        toast.warn("Database search failed. Searching external sources...");
+        await searchExternalHospitals(lat, lng);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [searchRadius, filterType, sortBy, backendUrl, searchExternalHospitals]
+  );
 
   const handleManualSearch = async () => {
     if (!location.trim()) {
@@ -92,10 +205,26 @@ const HospitalSearch = () => {
 
     setLoading(true);
     try {
-      // Try to geocode the address
-      const coordinates = await hospitalService.geocodeAddress(location);
-      setUserLocation(coordinates);
-      await searchNearbyHospitals(coordinates.latitude, coordinates.longitude);
+      // If user entered coordinates like "lat, lng" or "lat lng", parse directly
+      const coordMatch = location
+        .trim()
+        .match(/^\s*(-?\d{1,3}\.\d+)\s*[,\s]+\s*(-?\d{1,3}\.\d+)\s*$/);
+      if (coordMatch) {
+        const lat = parseFloat(coordMatch[1]);
+        const lng = parseFloat(coordMatch[2]);
+        const coordinates = { latitude: lat, longitude: lng };
+        setUserLocation(coordinates);
+        setLocation(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+        await searchDatabaseHospitals(lat, lng);
+      } else {
+        // Try to geocode the address
+        const coordinates = await hospitalService.geocodeAddress(location);
+        setUserLocation(coordinates);
+        await searchDatabaseHospitals(
+          coordinates.latitude,
+          coordinates.longitude
+        );
+      }
     } catch (error) {
       toast.error("Error finding location: " + error.message);
       console.error("Geocoding error:", error);
@@ -104,16 +233,169 @@ const HospitalSearch = () => {
     }
   };
 
-  const handleFilterChange = () => {
+  const handleFilterChange = useCallback(() => {
     if (userLocation && hasSearched) {
-      searchNearbyHospitals(userLocation.latitude, userLocation.longitude);
+      searchDatabaseHospitals(userLocation.latitude, userLocation.longitude);
     }
-  };
+  }, [userLocation, hasSearched, searchDatabaseHospitals]);
 
   // Re-search when filters change
   useEffect(() => {
     handleFilterChange();
-  }, [filterType, sortBy, searchRadius]);
+  }, [filterType, sortBy, searchRadius, handleFilterChange]);
+
+  // Enrich hospitals lacking any image with backend photo lookup (Google Places)
+  useEffect(() => {
+    const enrich = async () => {
+      if (!backendUrl || !hospitals || hospitals.length === 0) return;
+      const updated = [...hospitals];
+      let changed = false;
+
+      for (let i = 0; i < updated.length; i++) {
+        const h = updated[i];
+        const hasDbImage = Array.isArray(h.images) && h.images.length > 0;
+        const hasPhotos = Array.isArray(h.photos) && h.photos.length > 0;
+        const key =
+          h._id ||
+          h.id ||
+          `${h.name}-${h.address?.city || ""}-${h.location?.latitude || ""}`;
+        if (hasDbImage || hasPhotos || enrichedSetRef.current.has(key))
+          continue;
+
+        try {
+          const name = encodeURIComponent(h.name || "Hospital");
+          const city = encodeURIComponent(h.address?.city || "");
+          const lat =
+            h?.location?.latitude ?? h?.address?.coordinates?.latitude;
+          const lng =
+            h?.location?.longitude ?? h?.address?.coordinates?.longitude;
+          const qs = new URLSearchParams({ name: decodeURIComponent(name) });
+          if (city) qs.append("city", decodeURIComponent(city));
+          if (lat && lng) {
+            qs.append("lat", String(lat));
+            qs.append("lng", String(lng));
+          }
+          qs.append("max", "1");
+
+          const resp = await fetch(
+            `${backendUrl}/api/hospital/photos?${qs.toString()}`
+          );
+          const data = await resp.json();
+          if (
+            data?.success &&
+            Array.isArray(data.photos) &&
+            data.photos.length > 0
+          ) {
+            updated[i] = {
+              ...h,
+              photos: [data.photos[0], ...(h.photos || [])],
+            };
+            changed = true;
+          } else {
+            // Client-side fallback via Google Maps JS PlacesService
+            if (window.google?.maps?.places) {
+              const svc = new window.google.maps.places.PlacesService(
+                document.createElement("div")
+              );
+              const query = [h.name, h?.address?.city, h?.address?.state]
+                .filter(Boolean)
+                .join(", ");
+              await new Promise((resolve) => {
+                svc.textSearch(
+                  {
+                    query,
+                    type: "hospital",
+                    location:
+                      lat && lng
+                        ? new window.google.maps.LatLng(lat, lng)
+                        : undefined,
+                    radius: lat && lng ? 5000 : undefined,
+                  },
+                  (results, status) => {
+                    if (
+                      status ===
+                        window.google.maps.places.PlacesServiceStatus.OK &&
+                      results &&
+                      results.length > 0
+                    ) {
+                      const r0 = results[0];
+                      if (Array.isArray(r0.photos) && r0.photos.length > 0) {
+                        const url = r0.photos[0].getUrl({ maxWidth: 1200 });
+                        if (url) {
+                          updated[i] = {
+                            ...h,
+                            photos: [url, ...(h.photos || [])],
+                          };
+                          changed = true;
+                        }
+                      }
+                    }
+                    resolve();
+                  }
+                );
+              });
+            }
+          }
+          enrichedSetRef.current.add(key);
+        } catch {
+          // swallow
+        }
+      }
+
+      if (changed) setHospitals(updated);
+    };
+    enrich();
+  }, [hospitals, backendUrl]);
+
+  const getHospitalImageUrl = (hospital) => {
+    try {
+      // 1) DB images: array of objects or strings
+      if (
+        hospital.images &&
+        Array.isArray(hospital.images) &&
+        hospital.images.length > 0
+      ) {
+        // Normalize entries to objects with url
+        const imgs = hospital.images
+          .map((img) => (typeof img === "string" ? { url: img } : img))
+          .filter((img) => img && (img.url || img.secure_url));
+
+        if (imgs.length > 0) {
+          const main = imgs.find((i) => i.isMain) || imgs[0];
+          return main.url || main.secure_url;
+        }
+      }
+
+      // 2) Single image fields some APIs might use
+      if (typeof hospital.image === "string") return hospital.image;
+      if (hospital.mainImage && typeof hospital.mainImage === "string")
+        return hospital.mainImage;
+
+      // 3) External photos: could be array of strings or objects
+      if (hospital.photos && hospital.photos.length > 0) {
+        const p = hospital.photos[0];
+        if (typeof p === "string") return p;
+        if (p && typeof p === "object") {
+          // Common fields used by various sources
+          return (
+            p.url ||
+            p.secure_url ||
+            p.photo_url ||
+            p.image_url ||
+            p.link ||
+            null
+          );
+        }
+      }
+
+      // 4) Last resort placeholder
+      return `https://via.placeholder.com/300x200/4f46e5/ffffff?text=${encodeURIComponent(
+        (hospital.name || "Hospital").split(" ")[0]
+      )}`;
+    } catch {
+      return `https://via.placeholder.com/300x200/4f46e5/ffffff?text=Hospital`;
+    }
+  };
 
   const renderStars = (rating) => {
     if (!rating) return <span className="text-gray-400">No rating</span>;
@@ -154,9 +436,14 @@ const HospitalSearch = () => {
   };
 
   const getDirections = (hospital) => {
+    const lat =
+      hospital?.location?.latitude ?? hospital?.address?.coordinates?.latitude;
+    const lng =
+      hospital?.location?.longitude ??
+      hospital?.address?.coordinates?.longitude;
     const url = hospitalService.getDirectionsUrl(
-      hospital.location.latitude,
-      hospital.location.longitude,
+      lat,
+      lng,
       userLocation?.latitude,
       userLocation?.longitude
     );
@@ -170,6 +457,208 @@ const HospitalSearch = () => {
       toast.info("Phone number not available");
     }
   };
+
+  // Load featured hospitals (sample) to show below search before user searches
+  useEffect(() => {
+    const loadFeatured = async () => {
+      try {
+        const resp = await fetch(
+          `${backendUrl}/api/hospital/list?limit=6&sortBy=rating`
+        );
+        const data = await resp.json();
+        if (data?.success && Array.isArray(data.hospitals)) {
+          setFeaturedHospitals(data.hospitals);
+        }
+      } catch {
+        // ignore silently
+      }
+    };
+    if (backendUrl) loadFeatured();
+  }, [backendUrl]);
+
+  // Google Places Autocomplete for the location input
+  useEffect(() => {
+    if (!googleApiKey || !locationInputRef.current) return;
+
+    const initAutocomplete = () => {
+      if (!window.google?.maps?.places) return;
+      const input = locationInputRef.current;
+      const autocomplete = new window.google.maps.places.Autocomplete(input, {
+        types: ["geocode"],
+        fields: ["formatted_address", "geometry", "name"],
+      });
+      autocomplete.addListener("place_changed", async () => {
+        const place = autocomplete.getPlace();
+        if (place?.geometry?.location) {
+          const lat = place.geometry.location.lat();
+          const lng = place.geometry.location.lng();
+          setUserLocation({ latitude: lat, longitude: lng });
+          setLocation(place.formatted_address || place.name || "");
+          await searchDatabaseHospitals(lat, lng);
+          setHasSearched(true);
+        } else if (place?.name) {
+          setLocation(place.name);
+        }
+      });
+    };
+
+    // If the script is already present, initialize immediately
+    if (window.google?.maps?.places) {
+      initAutocomplete();
+      return;
+    }
+
+    // Inject the Google Maps JS script
+    const cbName = "initPlacesAutocomplete";
+    window[cbName] = () => initAutocomplete();
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&libraries=places&callback=${cbName}`;
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+
+    return () => {
+      // cleanup callback reference
+      try {
+        delete window[cbName];
+      } catch {
+        /* no-op */
+      }
+    };
+  }, [googleApiKey, searchDatabaseHospitals]);
+
+  // Render a single hospital card (used for both results and featured)
+  const renderHospitalCard = (hospital) => (
+    <div
+      key={hospital._id || hospital.id}
+      className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+      onClick={() => {
+        if (hospital._id) {
+          navigate(`/hospital/${hospital._id}`);
+        } else {
+          toast.info(
+            "This hospital's detailed information is not available in our system"
+          );
+        }
+      }}
+    >
+      <div className="relative">
+        <img
+          loading="lazy"
+          src={getHospitalImageUrl(hospital)}
+          alt={hospital.name}
+          className="w-full h-48 object-cover"
+          onError={(e) => {
+            e.currentTarget.src = `https://via.placeholder.com/300x200/4f46e5/ffffff?text=Hospital`;
+          }}
+        />
+        {hospital?.emergencyServices?.available && (
+          <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
+            🚑 Emergency
+          </div>
+        )}
+        <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-xs">
+          {hospital.distance
+            ? `${hospital.distance.toFixed(1)} km away`
+            : "Distance unknown"}
+        </div>
+      </div>
+
+      <div className="p-6">
+        <h3 className="text-xl font-semibold text-gray-800 mb-2">
+          {hospital.name}
+        </h3>
+        <p className="text-gray-600 mb-2 text-sm">
+          {hospital?.fullAddress ||
+            [
+              hospital?.address?.street,
+              hospital?.address?.city,
+              hospital?.address?.state,
+              hospital?.address?.zipCode,
+            ]
+              .filter(Boolean)
+              .join(", ") ||
+            hospital?.address}
+        </p>
+
+        {hospital.phone && (
+          <p className="text-gray-600 mb-3 text-sm">📞 {hospital.phone}</p>
+        )}
+
+        <div className="mb-3">
+          {renderStars(hospital.ratings?.overall ?? hospital.rating)}
+        </div>
+
+        {hospital.specialties && hospital.specialties.length > 0 && (
+          <div className="mb-4">
+            <p className="text-sm text-gray-700 font-medium mb-1">
+              Specialties:
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {hospital.specialties.slice(0, 3).map((specialty, index) => (
+                <span
+                  key={index}
+                  className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full"
+                >
+                  {typeof specialty === "string"
+                    ? specialty
+                    : specialty.name || specialty}
+                </span>
+              ))}
+              {hospital.specialties.length > 3 && (
+                <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
+                  +{hospital.specialties.length - 3} more
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {hospital.source && (
+          <div className="mb-3">
+            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+              Source: {hospital.source}
+            </span>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              callHospital(hospital.phone);
+            }}
+            disabled={!hospital.phone}
+            className="flex-1 bg-primary text-white py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            📞 Call
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              getDirections(hospital);
+            }}
+            className="flex-1 border border-primary text-primary py-2 rounded-lg hover:bg-primary hover:text-white transition-colors text-sm"
+          >
+            🗺️ Directions
+          </button>
+        </div>
+
+        {hospital.website && (
+          <div className="mt-2">
+            <a
+              href={hospital.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline text-sm"
+            >
+              🌐 Visit Website
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -195,6 +684,14 @@ const HospitalSearch = () => {
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
+                ref={locationInputRef}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    triggerManualSearch(true);
+                  }
+                }}
+                onBlur={() => triggerManualSearch(false)}
                 placeholder="Enter city, address, or coordinates"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
               />
@@ -209,11 +706,11 @@ const HospitalSearch = () => {
                 onChange={(e) => setSearchRadius(Number(e.target.value))}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
               >
-                <option value={1000}>1 km</option>
-                <option value={2000}>2 km</option>
-                <option value={5000}>5 km</option>
-                <option value={10000}>10 km</option>
-                <option value={20000}>20 km</option>
+                <option value={1}>1 km</option>
+                <option value={2}>2 km</option>
+                <option value={5}>5 km</option>
+                <option value={10}>10 km</option>
+                <option value={20}>20 km</option>
               </select>
             </div>
 
@@ -242,7 +739,7 @@ const HospitalSearch = () => {
                 📍 Current
               </button>
               <button
-                onClick={handleManualSearch}
+                onClick={() => triggerManualSearch(true)}
                 disabled={loading}
                 className="flex-1 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -286,141 +783,7 @@ const HospitalSearch = () => {
           </div>
         ) : hospitals.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {hospitals.map((hospital) => (
-              <div
-                key={hospital.id}
-                className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
-              >
-                {/* Hospital Image */}
-                <div className="relative">
-                  <img
-                    src={
-                      hospital.photos && hospital.photos[0]
-                        ? hospital.photos[0]
-                        : `https://via.placeholder.com/300x200/4f46e5/ffffff?text=${encodeURIComponent(
-                            hospital.name.split(" ")[0]
-                          )}`
-                    }
-                    alt={hospital.name}
-                    className="w-full h-48 object-cover"
-                    onError={(e) => {
-                      e.target.src = `https://via.placeholder.com/300x200/4f46e5/ffffff?text=Hospital`;
-                    }}
-                  />
-                  {hospital.emergencyServices && (
-                    <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
-                      🚑 Emergency
-                    </div>
-                  )}
-                  <div className="absolute bottom-2 left-2 bg-black bg-opacity-70 text-white px-2 py-1 rounded text-xs">
-                    {hospital.distance
-                      ? `${hospital.distance.toFixed(1)} km away`
-                      : "Distance unknown"}
-                  </div>
-                </div>
-
-                <div className="p-6">
-                  <h3 className="text-xl font-semibold text-gray-800 mb-2">
-                    {hospital.name}
-                  </h3>
-                  <p className="text-gray-600 mb-2 text-sm">
-                    {hospital.address}
-                  </p>
-
-                  {hospital.phone && (
-                    <p className="text-gray-600 mb-3 text-sm">
-                      📞 {hospital.phone}
-                    </p>
-                  )}
-
-                  {/* Rating */}
-                  <div className="mb-3">{renderStars(hospital.rating)}</div>
-
-                  {/* Specialties */}
-                  {hospital.specialties && hospital.specialties.length > 0 && (
-                    <div className="mb-4">
-                      <p className="text-sm text-gray-700 font-medium mb-1">
-                        Specialties:
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {hospital.specialties
-                          .slice(0, 3)
-                          .map((specialty, index) => (
-                            <span
-                              key={index}
-                              className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full"
-                            >
-                              {specialty}
-                            </span>
-                          ))}
-                        {hospital.specialties.length > 3 && (
-                          <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
-                            +{hospital.specialties.length - 3} more
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Data Source */}
-                  <div className="mb-3">
-                    <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                      Source: {hospital.source}
-                    </span>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => callHospital(hospital.phone)}
-                      disabled={!hospital.phone}
-                      className="flex-1 bg-primary text-white py-2 rounded-lg hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                    >
-                      📞 Call
-                    </button>
-                    <button
-                      onClick={() => getDirections(hospital)}
-                      className="flex-1 border border-primary text-primary py-2 rounded-lg hover:bg-primary hover:text-white transition-colors text-sm"
-                    >
-                      🗺️ Directions
-                    </button>
-                  </div>
-
-                  {/* Website Link */}
-                  {hospital.website && (
-                    <div className="mt-2">
-                      <a
-                        href={hospital.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline text-sm"
-                      >
-                        🌐 Visit Website
-                      </a>
-                    </div>
-                  )}
-
-                  {/* Operating Hours */}
-                  {hospital.openingHours &&
-                    hospital.openingHours.length > 0 && (
-                      <div className="mt-2">
-                        <details className="text-sm">
-                          <summary className="text-gray-700 cursor-pointer hover:text-primary">
-                            Operating Hours
-                          </summary>
-                          <div className="mt-1 text-xs text-gray-600">
-                            {hospital.openingHours
-                              .slice(0, 3)
-                              .map((hours, index) => (
-                                <div key={index}>{hours}</div>
-                              ))}
-                          </div>
-                        </details>
-                      </div>
-                    )}
-                </div>
-              </div>
-            ))}
+            {hospitals.map((hospital) => renderHospitalCard(hospital))}
           </div>
         ) : hasSearched ? (
           <div className="text-center py-12">
@@ -446,8 +809,8 @@ const HospitalSearch = () => {
               Find Hospitals Near You
             </h3>
             <p className="text-gray-500 mb-4">
-              Click "Current" to use your location or enter an address to search
-              for nearby hospitals.
+              Click &quot;Current&quot; to use your location or enter an address
+              to search for nearby hospitals.
             </p>
             <button
               onClick={getCurrentLocation}
@@ -456,6 +819,18 @@ const HospitalSearch = () => {
             >
               📍 Use My Location
             </button>
+
+            {/* Featured hospitals section */}
+            {featuredHospitals.length > 0 && (
+              <div className="mt-10 text-left">
+                <h4 className="text-lg font-semibold text-gray-800 mb-4">
+                  Featured hospitals
+                </h4>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {featuredHospitals.map((h) => renderHospitalCard(h))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

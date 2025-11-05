@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Sign-In Help - MedDirect</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #2563eb;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        h2 {
+            color: #1e40af;
+            border-bottom: 2px solid #3b82f6;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        .step {
+            background: #f8fafc;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+        }
+        .success {
+            background: #dcfce7;
+            border-left-color: #22c55e;
+            color: #15803d;
+        }
+        .warning {
+            background: #fef3c7;
+            border-left-color: #f59e0b;
+            color: #d97706;
+        }
+        .error {
+            background: #fee2e2;
+            border-left-color: #ef4444;
+            color: #dc2626;
+        }
+        .code {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+        .btn {
+            background: #3b82f6;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+            transition: all 0.3s;
+        }
+        .btn:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+        }
+        .btn-success {
+            background: #22c55e;
+        }
+        .btn-success:hover {
+            background: #16a34a;
+        }
+        .emoji {
+            font-size: 1.2em;
+            margin-right: 8px;
+        }
+        .popup-demo {
+            border: 2px dashed #3b82f6;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 8px;
+            background: #f1f5f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Google Sign-In Success Guide</h1>
+        
+        <div class="step success">
+            <h3><span class="emoji">✅</span>Good News!</h3>
+            <p>Your Google Sign-In component now has enhanced retry functionality. When you see "Sign-in popup was closed", you should see a <strong>"Try Google Sign-In Again"</strong> button.</p>
+        </div>
+
+        <h2>🎯 Step-by-Step Success Guide</h2>
+        
+        <div class="step">
+            <h3><span class="emoji">1️⃣</span>Prepare Your Browser</h3>
+            <p>First, let's test if popups work in your browser:</p>
+            <button class="btn" onclick="testPopup()">Test Popup Capability</button>
+            <div id="popup-result"></div>
+        </div>
+
+        <div class="step">
+            <h3><span class="emoji">2️⃣</span>Clear Any Problematic Data</h3>
+            <p>Click below to clear any corrupted tokens or data:</p>
+            <button class="btn btn-success" onclick="clearData()">Clear Storage & Refresh</button>
+        </div>
+
+        <div class="popup-demo">
+            <h3>🖼️ What You Should See</h3>
+            <p><strong>After clicking "Continue with Google":</strong></p>
+            <ol style="text-align: left; display: inline-block;">
+                <li>A Google popup window opens</li>
+                <li>You see Google's sign-in page</li>
+                <li>Select your Google account</li>
+                <li>Click "Continue" or "Allow"</li>
+                <li><strong>Wait for the popup to close automatically</strong></li>
+            </ol>
+        </div>
+
+        <div class="step warning">
+            <h3><span class="emoji">⚠️</span>If Popup Closes Too Soon</h3>
+            <p>You should now see a blue "Try Google Sign-In Again" button. Click it and:</p>
+            <ul>
+                <li><strong>Don't close the popup manually</strong></li>
+                <li><strong>Complete the Google authentication</strong></li>
+                <li><strong>Wait for automatic redirect</strong></li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3><span class="emoji">3️⃣</span>Alternative: Use Regular Sign-Up</h3>
+            <p>If Google Sign-In continues to have issues, you can create an account the traditional way:</p>
+            <ol>
+                <li>Go to the login page</li>
+                <li>Click "Create one now"</li>
+                <li>Fill out the form with your details</li>
+                <li>Complete the CAPTCHA</li>
+                <li>Accept terms and create account</li>
+            </ol>
+        </div>
+
+        <h2>🛠️ Troubleshooting Tools</h2>
+        
+        <div class="step">
+            <h3><span class="emoji">🔍</span>Quick Diagnostics</h3>
+            <button class="btn" onclick="runDiagnostics()">Run Full Diagnostics</button>
+            <div id="diagnostics-result"></div>
+        </div>
+
+        <div class="step">
+            <h3><span class="emoji">🔧</span>Manual Browser Settings</h3>
+            <p><strong>Chrome:</strong> Settings → Privacy & Security → Site Settings → Pop-ups → Allow for localhost</p>
+            <p><strong>Firefox:</strong> Options → Privacy & Security → Permissions → Block pop-up windows → Exceptions → Add localhost</p>
+            <p><strong>Edge:</strong> Settings → Site Permissions → Pop-ups and redirects → Allow for localhost</p>
+        </div>
+
+        <div class="step error">
+            <h3><span class="emoji">🚨</span>If Nothing Works</h3>
+            <p>Try these emergency solutions:</p>
+            <ul>
+                <li><strong>Use Incognito/Private browsing mode</strong></li>
+                <li><strong>Disable browser extensions temporarily</strong></li>
+                <li><strong>Try a different browser</strong></li>
+                <li><strong>Use the regular email/password sign-up</strong></li>
+            </ul>
+        </div>
+
+        <div class="code">
+// Emergency fix - paste in browser console (F12):
+localStorage.clear();
+sessionStorage.clear();
+console.log('✅ Cleared all data');
+window.location.reload();
+        </div>
+
+        <div class="step success">
+            <h3><span class="emoji">🎉</span>Expected Result</h3>
+            <p>After successful Google Sign-In, you should see:</p>
+            <ul>
+                <li>A welcome message with your name</li>
+                <li>Automatic redirect to the home page</li>
+                <li>Your profile picture in the navbar</li>
+                <li>Access to all MedDirect features</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function testPopup() {
+            const resultDiv = document.getElementById('popup-result');
+            try {
+                const popup = window.open('', '_blank', 'width=500,height=400');
+                if (popup) {
+                    popup.close();
+                    resultDiv.innerHTML = '<div style="color: green; margin-top: 10px;">✅ Popups are working! Google Sign-In should work.</div>';
+                } else {
+                    resultDiv.innerHTML = '<div style="color: red; margin-top: 10px;">❌ Popups are blocked. Please allow popups for this site.</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<div style="color: red; margin-top: 10px;">❌ Popup test failed: ' + error.message + '</div>';
+            }
+        }
+
+        function clearData() {
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            // Clear cookies
+            document.cookie.split(";").forEach(function(c) { 
+                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+            });
+            
+            alert('✅ All data cleared! Page will refresh in 2 seconds...');
+            setTimeout(() => {
+                window.location.href = 'http://localhost:5173/login';
+            }, 2000);
+        }
+
+        async function runDiagnostics() {
+            const resultDiv = document.getElementById('diagnostics-result');
+            resultDiv.innerHTML = '<div style="color: blue;">🔍 Running diagnostics...</div>';
+            
+            let results = [];
+            
+            // Test 1: Popup capability
+            try {
+                const popup = window.open('', '_blank', 'width=1,height=1');
+                if (popup) {
+                    popup.close();
+                    results.push('✅ Popups: Working');
+                } else {
+                    results.push('❌ Popups: Blocked');
+                }
+            } catch (e) {
+                results.push('❌ Popups: Error');
+            }
+            
+            // Test 2: Backend connection
+            try {
+                const response = await fetch('http://localhost:4001');
+                if (response.ok) {
+                    results.push('✅ Backend: Connected');
+                } else {
+                    results.push('⚠️ Backend: Issues detected');
+                }
+            } catch (e) {
+                results.push('❌ Backend: Not accessible');
+            }
+            
+            // Test 3: Storage capability
+            try {
+                localStorage.setItem('test', 'value');
+                localStorage.removeItem('test');
+                results.push('✅ Storage: Working');
+            } catch (e) {
+                results.push('❌ Storage: Error');
+            }
+            
+            resultDiv.innerHTML = '<div style="margin-top: 10px;"><h4>Diagnostic Results:</h4>' + 
+                                 results.map(r => '<div>' + r + '</div>').join('') + '</div>';
+        }
+
+        // Auto-run popup test when page loads
+        window.onload = function() {
+            setTimeout(testPopup, 1000);
+        };
+    </script>
+</body>
+</html>

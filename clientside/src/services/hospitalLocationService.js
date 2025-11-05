@@ -5,6 +5,7 @@ class HospitalLocationService {
       google: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
       mapbox: import.meta.env.VITE_MAPBOX_API_KEY
     };
+    this.defaultTimeoutMs = 8000;
   }
 
   // Get user's current location with high accuracy
@@ -54,12 +55,15 @@ class HospitalLocationService {
   async geocodeAddress(address) {
     try {
       // Try Google Geocoding API first
+      const fetchWithTimeout = this._fetchWithTimeout.bind(this);
+
       if (this.apiKeys.google) {
-        const response = await fetch(
-          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${this.apiKeys.google}`
+        const response = await fetchWithTimeout(
+          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${this.apiKeys.google}`,
+          6000
         );
         const data = await response.json();
-        
+
         if (data.status === 'OK' && data.results.length > 0) {
           const location = data.results[0].geometry.location;
           return {
@@ -71,8 +75,9 @@ class HospitalLocationService {
       }
 
       // Fallback to OpenStreetMap Nominatim (free)
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`
+      const response = await fetchWithTimeout(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+        6000
       );
       const data = await response.json();
       
@@ -102,7 +107,7 @@ class HospitalLocationService {
       }
 
       // Method 2: Overpass API (OpenStreetMap)
-      const osmHospitals = await this.searchOverpassAPI(latitude, longitude, radius);
+  const osmHospitals = await this.searchOverpassAPI(latitude, longitude, radius);
       hospitals.push(...osmHospitals);
 
       // Method 3: Healthcare.gov API (US only)
@@ -125,30 +130,45 @@ class HospitalLocationService {
   // Google Places API search
   async searchGooglePlaces(latitude, longitude, radius) {
     try {
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitude},${longitude}&radius=${radius}&type=hospital&key=${this.apiKeys.google}`
+      const response = await this._fetchWithTimeout(
+        `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitude},${longitude}&radius=${radius}&type=hospital&key=${this.apiKeys.google}`,
+        this.defaultTimeoutMs
       );
       const data = await response.json();
 
       if (data.status === 'OK') {
-        return data.results.map(place => ({
-          id: place.place_id,
-          name: place.name,
-          address: place.vicinity,
-          location: {
-            latitude: place.geometry.location.lat,
-            longitude: place.geometry.location.lng
-          },
-          rating: place.rating || 0,
-          phone: place.formatted_phone_number,
-          website: place.website,
-          photos: place.photos ? place.photos.map(photo => 
-            `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photo.photo_reference}&key=${this.apiKeys.google}`
-          ) : [],
-          openingHours: place.opening_hours?.weekday_text || [],
-          priceLevel: place.price_level,
-          source: 'Google Places'
-        }));
+        const mapped = await Promise.all(
+          data.results.map(async (place) => {
+            let photos = [];
+            if (Array.isArray(place.photos) && place.photos.length > 0) {
+              photos = place.photos.map((photo) =>
+                `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photo.photo_reference}&key=${this.apiKeys.google}`
+              );
+            } else {
+              // Fallback: fetch details to try to get photos if Nearby Search had none
+              const detailsPhotos = await this._fetchPlacePhotosByDetails(place.place_id);
+              photos = detailsPhotos;
+            }
+
+            return {
+              id: place.place_id,
+              name: place.name,
+              address: place.vicinity,
+              location: {
+                latitude: place.geometry.location.lat,
+                longitude: place.geometry.location.lng
+              },
+              rating: place.rating || 0,
+              phone: place.formatted_phone_number,
+              website: place.website,
+              photos,
+              openingHours: place.opening_hours?.weekday_text || [],
+              priceLevel: place.price_level,
+              source: 'Google Places'
+            };
+          })
+        );
+        return mapped;
       }
       return [];
     } catch (error) {
@@ -187,6 +207,7 @@ class HospitalLocationService {
         },
         phone: element.tags?.phone,
         website: element.tags?.website,
+        photos: element.tags?.image ? [element.tags.image] : [],
         specialties: this.extractSpecialties(element.tags),
         operatingTimes: element.tags?.opening_hours,
         emergencyServices: element.tags?.emergency === 'yes',
@@ -357,6 +378,38 @@ class HospitalLocationService {
       return `https://www.google.com/maps/dir/${userLat},${userLng}/${destinationLat},${destinationLng}`;
     }
     return `https://www.google.com/maps/search/${destinationLat},${destinationLng}`;
+  }
+
+  // Internal: fetch with timeout helper
+  async _fetchWithTimeout(url, ms = 8000, options = {}) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), ms);
+    try {
+      const res = await fetch(url, { signal: controller.signal, ...options });
+      return res;
+    } finally {
+      clearTimeout(id);
+    }
+  }
+
+  // Internal: get photos by Place Details if Nearby Search didn't include any
+  async _fetchPlacePhotosByDetails(placeId) {
+    try {
+      if (!this.apiKeys.google || !placeId) return [];
+      const detailsRes = await this._fetchWithTimeout(
+        `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=photo,website,formatted_phone_number,opening_hours&key=${this.apiKeys.google}`,
+        this.defaultTimeoutMs
+      );
+      const details = await detailsRes.json();
+      if (details.status === 'OK' && details.result && Array.isArray(details.result.photos)) {
+        return details.result.photos.slice(0, 3).map((p) =>
+          `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${p.photo_reference}&key=${this.apiKeys.google}`
+        );
+      }
+      return [];
+    } catch {
+      return [];
+    }
   }
 }
 

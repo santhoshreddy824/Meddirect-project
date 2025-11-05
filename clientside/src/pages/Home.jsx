@@ -1,4 +1,3 @@
-import React from "react";
 import Headers from "../components/Header";
 import SpecialityMenu from "../components/SpecialityMenu";
 import TopDoctors from "../components/TopDoctors";

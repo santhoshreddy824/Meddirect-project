@@ -188,7 +188,7 @@ const Payment = () => {
         },
         body: JSON.stringify({
           appointmentId: appointmentId,
-          paymentMethod: paymentData.method || "Online",
+          paymentMethod: paymentData.paymentMethod || "Online", // Fixed to use paymentMethod
           amount: appointmentData.amount,
         }),
       });

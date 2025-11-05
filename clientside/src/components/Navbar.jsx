@@ -25,26 +25,30 @@ const Navbar = () => {
         <span className="text-xl font-semibold text-gray-800">MedDirect</span>
       </div>
       <ul className="hidden md:flex items-start gap-5 font-medium">
-        <NavLink to="/">
+        <NavLink to={token ? "/" : "/login"}>
           <li className="py-1">HOME</li>
           <hr className="border-none outline-none h-0.5 bg-primary w-3/5 m-auto hidden" />
         </NavLink>
-        <NavLink to="/doctors">
-          <li className="py-1">ALL DOCTORS</li>
-          <hr className="border-none outline-none h-0.5 bg-primary w-3/5 m-auto hidden" />
-        </NavLink>
-        <NavLink to="/hospitals">
-          <li className="py-1">HOSPITALS</li>
-          <hr className="border-none outline-none h-0.5 bg-primary w-3/5 m-auto hidden" />
-        </NavLink>
-        <NavLink to="/medications">
-          <li className="py-1">MEDICATIONS</li>
-          <hr className="border-none outline-none h-0.5 bg-primary w-3/5 m-auto hidden" />
-        </NavLink>
-        <NavLink to="/health-assessment">
-          <li className="py-1">HEALTH CHECK</li>
-          <hr className="border-none outline-none h-0.5 bg-primary w-3/5 m-auto hidden" />
-        </NavLink>
+        {token && (
+          <>
+            <NavLink to="/doctors">
+              <li className="py-1">ALL DOCTORS</li>
+              <hr className="border-none outline-none h-0.5 bg-primary w-3/5 m-auto hidden" />
+            </NavLink>
+            <NavLink to="/hospitals">
+              <li className="py-1">HOSPITALS</li>
+              <hr className="border-none outline-none h-0.5 bg-primary w-3/5 m-auto hidden" />
+            </NavLink>
+            <NavLink to="/medications">
+              <li className="py-1">MEDICATIONS</li>
+              <hr className="border-none outline-none h-0.5 bg-primary w-3/5 m-auto hidden" />
+            </NavLink>
+            <NavLink to="/health-assessment">
+              <li className="py-1">HEALTH CHECK</li>
+              <hr className="border-none outline-none h-0.5 bg-primary w-3/5 m-auto hidden" />
+            </NavLink>
+          </>
+        )}
         <NavLink to="/about">
           <li className="py-1">ABOUT</li>
           <hr className="border-none outline-none h-0.5 bg-primary w-3/5 m-auto hidden" />
@@ -80,12 +84,20 @@ const Navbar = () => {
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => navigate("/login")}
-            className="bg-primary text-white px-8 py-3 rounded-full font-light hidden md:block"
-          >
-            Create account
-          </button>
+          <div className="flex items-center gap-2">
+            {/* <button
+              onClick={() => navigate("/login")}
+              className="text-primary border border-primary px-6 py-2 rounded-full font-medium hover:bg-primary hover:text-white transition-all duration-200 hidden sm:block"
+            >
+              Login
+            </button> */}
+            <button
+              onClick={() => navigate("/login")}
+              className="bg-primary text-white px-6 py-2 rounded-full font-medium hover:bg-primary/90 transition-all duration-200"
+            >
+              Create account
+            </button>
+          </div>
         )}
         <img
           onClick={() => setShowMenu(true)}
@@ -114,27 +126,50 @@ const Navbar = () => {
             />
           </div>
           <ul className="flex flex-col items-center gap-2 mt-5 px-5 text-lg font-medium">
-            <NavLink onClick={() => setShowMenu(false)} to="/">
+            <NavLink
+              onClick={() => setShowMenu(false)}
+              to={token ? "/" : "/login"}
+            >
               <p className="px-4 py-2 rounded inline-block">HOME</p>
             </NavLink>
-            <NavLink onClick={() => setShowMenu(false)} to="/doctors">
-              <p className="px-4 py-2 rounded inline-block">ALL DOCTORS</p>
-            </NavLink>
-            <NavLink onClick={() => setShowMenu(false)} to="/hospitals">
-              <p className="px-4 py-2 rounded inline-block">HOSPITALS</p>
-            </NavLink>
-            <NavLink onClick={() => setShowMenu(false)} to="/medications">
-              <p className="px-4 py-2 rounded inline-block">MEDICATIONS</p>
-            </NavLink>
-            <NavLink onClick={() => setShowMenu(false)} to="/health-assessment">
-              <p className="px-4 py-2 rounded inline-block">HEALTH CHECK</p>
-            </NavLink>
+            {token && (
+              <>
+                <NavLink onClick={() => setShowMenu(false)} to="/doctors">
+                  <p className="px-4 py-2 rounded inline-block">ALL DOCTORS</p>
+                </NavLink>
+                <NavLink onClick={() => setShowMenu(false)} to="/hospitals">
+                  <p className="px-4 py-2 rounded inline-block">HOSPITALS</p>
+                </NavLink>
+                <NavLink onClick={() => setShowMenu(false)} to="/medications">
+                  <p className="px-4 py-2 rounded inline-block">MEDICATIONS</p>
+                </NavLink>
+                <NavLink
+                  onClick={() => setShowMenu(false)}
+                  to="/health-assessment"
+                >
+                  <p className="px-4 py-2 rounded inline-block">HEALTH CHECK</p>
+                </NavLink>
+              </>
+            )}
             <NavLink onClick={() => setShowMenu(false)} to="/about">
               <p className="px-4 py-2 rounded inline-block">ABOUT</p>
             </NavLink>
             <NavLink onClick={() => setShowMenu(false)} to="/contact">
               <p className="px-4 py-2 rounded inline-block">CONTACT</p>
             </NavLink>
+            {!token && (
+              <div className="flex flex-col gap-2 mt-4">
+                <button
+                  onClick={() => {
+                    setShowMenu(false);
+                    navigate("/login");
+                  }}
+                  className="bg-primary text-white px-6 py-2 rounded-full font-medium"
+                >
+                  Login / Create Account
+                </button>
+              </div>
+            )}
           </ul>
         </div>
       </div>

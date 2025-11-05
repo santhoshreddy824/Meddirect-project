@@ -7,6 +7,7 @@ import { signInWithGooglePopup } from "../services/firebase";
 
 const FirebaseGoogleSignIn = ({ userType = "user" }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const navigate = useNavigate();
   const { setToken, backendUrl } = useContext(AppContext);
 
@@ -15,34 +16,72 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
     return null;
   }
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async (isRetry = false) => {
     try {
       setIsLoading(true);
-      console.log("🔐 Starting Firebase Google Sign-In...");
+
+      if (!isRetry) {
+        console.log("🔐 Starting Firebase Google Sign-In...");
+      } else {
+        console.log("🔄 Retrying Firebase Google Sign-In...");
+      }
+
+      // Show user-friendly message about popup
+      if (!isRetry && retryCount === 0) {
+        toast.info("Opening Google Sign-In popup...", { autoClose: 2000 });
+      }
+
+      // Check if popup blockers might be active
+      const userAgent = navigator.userAgent;
+      if (userAgent.includes("Chrome") && !window.chrome) {
+        toast.warn(
+          "Please disable popup blockers for Google Sign-In to work properly."
+        );
+      }
 
       // Sign in with Firebase Google popup
       const result = await signInWithGooglePopup();
+
+      if (!result || !result.user) {
+        throw new Error("No user data received from Google");
+      }
+
       const user = result.user;
 
       console.log("✅ Firebase authentication successful:", {
         uid: user.uid,
         email: user.email,
         name: user.displayName,
+        verified: user.emailVerified,
       });
+
+      // Reset retry count on success
+      setRetryCount(0);
+
+      // Validate required user data
+      if (!user.email) {
+        throw new Error(
+          "Email not provided by Google. Please try a different sign-in method."
+        );
+      }
 
       // Get Firebase ID token
       const idToken = await user.getIdToken();
+      console.log("🔑 Firebase ID token obtained");
 
       // Prepare user data for backend
       const userData = {
         firebaseUid: user.uid,
-        name: user.displayName || "Firebase User",
+        name: user.displayName || "Google User",
         email: user.email,
-        imageUrl: user.photoURL,
+        imageUrl: user.photoURL || null,
         idToken: idToken, // Firebase ID token for verification
       };
 
-      console.log("🚀 Sending Firebase user data to backend...");
+      console.log("🚀 Sending Firebase user data to backend...", {
+        ...userData,
+        idToken: "[HIDDEN]",
+      });
 
       // Send to your backend for verification and user creation/login
       const response = await fetch(`${backendUrl}/api/user/firebase-auth`, {
@@ -53,14 +92,25 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
         body: JSON.stringify(userData),
       });
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Backend response error:", errorText);
+        throw new Error(`Backend error: ${response.status} - ${errorText}`);
+      }
+
       const data = await response.json();
+      console.log("Backend authentication response:", {
+        ...data,
+        token: data.token ? "[RECEIVED]" : "[MISSING]",
+      });
 
       if (data.success) {
         // Store your app's JWT token
         localStorage.setItem("token", data.token);
         setToken(data.token);
 
-        toast.success(`Welcome ${data.user.name}! 🎉`);
+        toast.success(`Welcome ${data.user?.name || userData.name}! 🎉`);
+        console.log("🎉 Google Sign-In completed successfully");
         navigate("/");
       } else {
         throw new Error(data.message || "Authentication failed");
@@ -68,12 +118,47 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
     } catch (error) {
       console.error("❌ Firebase Google Sign-In error:", error);
 
+      let errorMessage = "Google Sign-In failed";
+      let showRetryOption = false;
+
+      // Handle specific Firebase Auth errors
       if (error.code === "auth/popup-closed-by-user") {
-        toast.info("Sign-in cancelled");
+        setRetryCount((prev) => prev + 1);
+
+        if (retryCount < 2) {
+          errorMessage = "Sign-in popup was closed. Click below to try again.";
+          showRetryOption = true;
+          toast.warn(errorMessage, { autoClose: 4000 });
+        } else {
+          errorMessage =
+            "Sign-in was cancelled multiple times. Please complete the Google authentication process.";
+          toast.error(errorMessage);
+        }
+        return; // Don't show error toast for cancellation
       } else if (error.code === "auth/popup-blocked") {
-        toast.error("Pop-up blocked. Please allow pop-ups and try again.");
-      } else {
-        toast.error("Google Sign-In failed. Please try again.");
+        errorMessage =
+          "Pop-up was blocked by your browser. Please allow pop-ups for this site and try again.";
+        showRetryOption = true;
+        toast.warn(errorMessage, { autoClose: 6000 });
+      } else if (error.code === "auth/network-request-failed") {
+        errorMessage = "Network error. Please check your internet connection.";
+        showRetryOption = true;
+      } else if (error.code === "auth/too-many-requests") {
+        errorMessage =
+          "Too many failed attempts. Please try again in a few minutes.";
+      } else if (error.code === "auth/user-disabled") {
+        errorMessage = "This Google account has been disabled.";
+      } else if (error.message.includes("Backend error")) {
+        errorMessage =
+          "Server connection failed. Please ensure the backend is running.";
+        showRetryOption = true;
+      } else if (error.message) {
+        errorMessage = error.message;
+        showRetryOption = true;
+      }
+
+      if (!showRetryOption || retryCount >= 2) {
+        toast.error(errorMessage);
       }
     } finally {
       setIsLoading(false);
@@ -81,10 +166,10 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full space-y-2">
       <button
         type="button"
-        onClick={handleGoogleSignIn}
+        onClick={() => handleGoogleSignIn(false)}
         disabled={isLoading}
         className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
       >
@@ -115,9 +200,31 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
         </span>
       </button>
 
-      <div className="mt-2 text-xs text-center text-green-600">
-        ✓ Firebase Google Sign-In Ready
-      </div>
+      {/* Retry button for cancelled attempts */}
+      {retryCount > 0 && retryCount < 3 && !isLoading && (
+        <button
+          type="button"
+          onClick={() => handleGoogleSignIn(true)}
+          className="w-full flex items-center justify-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 py-2 px-4 rounded-lg hover:bg-blue-100 transition-all duration-200 text-sm"
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          Try Google Sign-In Again
+        </button>
+      )}
+
+      {/* Status helper text removed per request */}
     </div>
   );
 };
