@@ -211,7 +211,7 @@ const createPaymentIntent = async (req, res) => {
     let paymentData;
 
     // Check if we're in development mode with placeholder keys
-    const isDevMode = process.env.STRIPE_SECRET_KEY?.includes('sk_test_51QSkDhEq0mxjNw5V') || 
+    const isDevMode = process.env.STRIPE_SECRET_KEY?.includes('your_stripe_secret_key_here') || 
                       process.env.RAZORPAY_KEY_ID?.includes('rzp_test_1234567890abcdef');
 
     if (isDevMode) {
