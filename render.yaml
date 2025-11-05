@@ -40,7 +40,7 @@ services:
       # See RENDER_MANUAL_DEPLOYMENT.md for complete list
 
   # Frontend Static Site
-  - type: static
+  - type: web
     name: meddirect-frontend
     plan: free
     region: oregon
@@ -52,7 +52,7 @@ services:
       # Add your frontend environment variables here
 
   # Admin Panel Static Site
-  - type: static
+  - type: web
     name: meddirect-admin
     plan: free
     region: oregon
