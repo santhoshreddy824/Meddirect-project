@@ -19,17 +19,33 @@ const port = process.env.PORT || 4000;
 
 // middlewares
 app.use(express.json());
+
+// Flexible CORS: allow configured URLs plus common local/dev and hosted patterns
+const STATIC_ALLOWED = [
+  'http://localhost:5175',
+  'http://localhost:5174',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://meddirect-frontend.onrender.com',
+  'https://meddirect-admin.onrender.com',
+  process.env.FRONTEND_URL,
+  process.env.ADMIN_URL,
+].filter(Boolean);
+
+const ORIGIN_PATTERNS = [
+  /\.vercel\.app$/i,
+  /\.onrender\.com$/i,
+  /^http:\/\/localhost:(\d{2,5})$/
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:5175', 
-    'http://localhost:5174', 
-    'http://localhost:3000', 
-    'http://localhost:5173',
-    'https://meddirect-frontend.onrender.com',
-    'https://meddirect-admin.onrender.com',
-    process.env.FRONTEND_URL,
-    process.env.ADMIN_URL
-  ],
+  origin: (origin, callback) => {
+    // Allow non-browser requests (e.g., health checks, server-to-server)
+    if (!origin) return callback(null, true);
+    if (STATIC_ALLOWED.includes(origin)) return callback(null, true);
+    if (ORIGIN_PATTERNS.some((re) => re.test(origin))) return callback(null, true);
+    return callback(new Error(`CORS blocked: ${origin}`));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'token', 'aToken', 'dToken']

@@ -30,13 +30,28 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 20.11.1
       - key: PORT
         value: 10000
-      # Add your environment variables here:
+      - key: FRONTEND_URL
+        value: https://meddirect-frontend.onrender.com
+      - key: ADMIN_URL
+        value: https://meddirect-admin.onrender.com
+      # Database & auth (update with real values)
       # - key: MONGODB_URI
       #   value: your_mongodb_connection_string
       # - key: JWT_SECRET
       #   value: your_jwt_secret
+      # Third-party APIs
+      # - key: CLOUDINARY_CLOUD_NAME
+      #   value: your_cloud_name
+      # - key: CLOUDINARY_API_KEY
+      #   value: your_api_key
+      # - key: CLOUDINARY_API_SECRET
+      #   value: your_api_secret
+      # - key: GOOGLE_MAPS_API_KEY
+      #   value: your_server_side_google_key
       # See RENDER_MANUAL_DEPLOYMENT.md for complete list
 
   # Frontend Static Site
@@ -49,6 +64,8 @@ services:
     envVars:
       - key: VITE_BACKEND_URL
         value: "https://meddirect-backend.onrender.com"
+      # - key: VITE_GOOGLE_MAPS_API_KEY
+      #   value: your_browser_restricted_google_key
       # Add your frontend environment variables here
 
   # Admin Panel Static Site
@@ -61,4 +78,6 @@ services:
     envVars:
       - key: VITE_BACKEND_URL
         value: "https://meddirect-backend.onrender.com"
+      # - key: VITE_GOOGLE_MAPS_API_KEY
+      #   value: your_browser_restricted_google_key
       # Add your admin environment variables here
