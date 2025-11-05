@@ -19,7 +19,7 @@
 
 services:
   # Backend API Service
-  - type: web
+ - type: web
   name: meddirect-backend
   runtime: node
   plan: free
@@ -32,7 +32,6 @@ services:
       value: production
     - key: PORT
       value: 10000
-
       # Add your environment variables here:
       # - key: MONGODB_URI
       #   value: your_mongodb_connection_string
