@@ -20,18 +20,19 @@
 services:
   # Backend API Service
   - type: web
-    name: meddirect-backend
-    runtime: node
-    plan: free
-    region: oregon
-    buildCommand: cd backend && npm install
-    startCommand: cd backend && npm start
-    healthCheckPath: /api/health
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: 10000
+  name: meddirect-backend
+  runtime: node
+  plan: free
+  region: oregon
+  buildCommand: cd backend && npm install
+  startCommand: cd backend && npm start
+  healthCheckPath: /api/health
+  envVars:
+    - key: NODE_ENV
+      value: production
+    - key: PORT
+      value: 10000
+
       # Add your environment variables here:
       # - key: MONGODB_URI
       #   value: your_mongodb_connection_string
