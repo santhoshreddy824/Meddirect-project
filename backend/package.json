@@ -9,6 +9,7 @@
     "dev": "nodemon server.js",
     "server": "nodemon server.js",
     "build": "echo 'No build step required for Node.js backend'",
+  "reinstall": "rm -rf node_modules package-lock.json && npm install",
     "seed": "node addSampleDoctors.js && node addSampleUsers.js",
     "deploy": "npm install && npm start"
   },
