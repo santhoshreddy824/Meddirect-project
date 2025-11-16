@@ -28,7 +28,7 @@ const STATIC_ALLOWED = [
   'http://localhost:3000',
   'https://meddirect-clientside.vercel.app/',
   'https://meddirect-admin.onrender.com',
-  process.env.FRONTEND_URL,
+  process.env.CLIENTSIDE_URL,
   process.env.ADMIN_URL,
 ].filter(Boolean);
 
