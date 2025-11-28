@@ -12,6 +12,12 @@ const AdminContextProvider = (props) => {
   const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [dashData, setDashData] = useState(false);
+  const [loginEvents, setLoginEvents] = useState([]);
+  const [loginEventsMeta, setLoginEventsMeta] = useState({
+    page: 1,
+    total: 0,
+    limit: 20,
+  });
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
   const currencySymbol = "₹"; // Indian Rupees
@@ -211,6 +217,8 @@ const AdminContextProvider = (props) => {
     dashData,
     getDashData,
     clearInvalidAdminToken,
+    loginEvents,
+    loginEventsMeta,
   };
 
   return (

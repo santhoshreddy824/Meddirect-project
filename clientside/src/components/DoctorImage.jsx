@@ -5,17 +5,22 @@ import doc1 from "../assets/doc1.png"; // Default fallback image
 
 const DoctorImage = ({ doctor, className = "", alt = "" }) => {
   const [imgSrc, setImgSrc] = useState(() => {
-    // Use the doctor object to get the appropriate local image
-    const localImage = getLocalDoctorImage(doctor);
+    // Prefer explicit URLs (e.g., Cloudinary) when provided
+    const img = doctor?.image;
+    const isUrl = typeof img === "string" && /^(https?:)?\/\//.test(img);
+    if (isUrl) return img;
+    // Otherwise map to local image assets
+    const localImage = getLocalDoctorImage(doctor || {});
     return localImage || doc1;
   });
   const [hasError, setHasError] = useState(false);
 
   const handleImageError = () => {
-    if (!hasError && imgSrc !== doc1) {
-      // Always fallback to default doctor image on error
-      setImgSrc(doc1);
-      setHasError(true); // Prevent infinite loop
+    if (!hasError) {
+      // Fallback to a mapped local image first, then default
+      const fallback = getLocalDoctorImage(doctor || {}) || doc1;
+      setImgSrc(fallback);
+      setHasError(true);
     }
   };
 

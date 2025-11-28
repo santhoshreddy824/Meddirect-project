@@ -9,6 +9,8 @@ import userRouter from "./routes/userRoute.js";
 import paymentRouter from "./routes/paymentRoute.js";
 import medicationRouter from "./routes/medicationRoute.js";
 import hospitalRouter from "./routes/hospitalRoute.js";
+import { listLoginEvents } from "./controllers/adminController.js";
+import authAdmin from "./middlewares/authAdmin.js";
 
 // Load environment variables explicitly
 dotenv.config();
@@ -61,6 +63,9 @@ app.use("/api/user", userRouter);
 app.use("/api/payment", paymentRouter);
 app.use("/api/medication", medicationRouter);
 app.use("/api/hospital", hospitalRouter);
+
+// Hard-wire critical admin endpoint to avoid 404 in case of router mismatch on some deployments
+app.all("/api/admin/login-events", authAdmin, listLoginEvents);
 
 app.get("/", (req, res) => {
   res.send("MEDDIRECT API WORKING");
@@ -143,3 +148,20 @@ const initializeAndStart = async () => {
 };
 
 initializeAndStart();
+
+// JSON 404 handler for unknown API routes (prevents HTML DOCTYPE responses)
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({ success: false, message: `Not found: ${req.method} ${req.path}` });
+  }
+  return next();
+});
+
+// Generic error handler to return JSON for API paths
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    return res.status(err.status || 500).json({ success: false, message: err.message || "Server error" });
+  }
+  return res.status(err.status || 500).send(err.message || "Server error");
+});

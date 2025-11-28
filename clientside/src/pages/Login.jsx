@@ -7,8 +7,8 @@ import FirebaseGoogleSignIn from "../components/FirebaseGoogleSignIn";
 import CaptchaComponent from "../components/CaptchaComponent";
 import { assets } from "../assets/assets";
 
-// Configure axios defaults for better error handling
-axios.defaults.timeout = 10000; // 10 seconds timeout
+// Configure axios defaults for better error handling (Render cold-starts can take >10s)
+axios.defaults.timeout = 25000; // 25 seconds default timeout
 axios.defaults.headers.common["Content-Type"] = "application/json";
 
 const Login = () => {
@@ -31,6 +31,11 @@ const Login = () => {
   const [captchaToken, setCaptchaToken] = useState(null);
   const [captchaVerified, setCaptchaVerified] = useState(false);
 
+  // Forgot Password modal state
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+
   // Clear any invalid tokens on login page load
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
@@ -47,19 +52,44 @@ const Login = () => {
 
   // Test backend connection on component mount
   const testConnection = useCallback(async () => {
-    try {
-      console.log("🔌 Testing backend connection...");
-      setConnectionStatus("testing");
-
-      const response = await axios.get(backendUrl);
-      console.log("✅ Backend connection successful:", response.data);
-      setConnectionStatus("connected");
-    } catch (error) {
-      console.error("❌ Backend connection failed:", error);
+    if (!backendUrl) {
       setConnectionStatus("failed");
-      toast.error(
-        "Cannot connect to server. Please check if the backend is running."
+      return;
+    }
+
+    console.log("🔌 Testing backend connection...");
+    setConnectionStatus("testing");
+
+    const healthUrl = backendUrl.endsWith("/")
+      ? backendUrl + "api/health"
+      : backendUrl + "/api/health";
+
+    const tryOnce = async () => {
+      return axios.get(healthUrl, { timeout: 20000 }); // allow up to 20s for cold start
+    };
+
+    try {
+      await tryOnce();
+      console.log("✅ Backend health OK");
+      setConnectionStatus("connected");
+    } catch (e1) {
+      console.warn(
+        "⚠️ First health check failed, retrying shortly...",
+        e1?.message
       );
+      // brief backoff then one more try (handles Render cold start)
+      await new Promise((r) => setTimeout(r, 1500));
+      try {
+        await tryOnce();
+        console.log("✅ Backend health OK on retry");
+        setConnectionStatus("connected");
+      } catch (e2) {
+        console.error("❌ Backend connection failed after retry:", e2);
+        setConnectionStatus("failed");
+        toast.error(
+          "Cannot connect to server right now. Please try again in a few seconds."
+        );
+      }
     }
   }, [backendUrl]);
 
@@ -79,6 +109,38 @@ const Login = () => {
     setCaptchaToken(null);
     setCaptchaVerified(false);
     toast.error("CAPTCHA verification failed. Please try again.");
+  };
+
+  // Forgot Password handler
+  const handleForgotPassword = async (event) => {
+    event.preventDefault();
+
+    if (!forgotEmail || !forgotEmail.includes("@")) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    try {
+      setForgotLoading(true);
+      const { data } = await axios.post(
+        `${backendUrl}/api/user/forgot-password`,
+        { email: forgotEmail },
+        { timeout: 15000 }
+      );
+
+      if (data.success) {
+        toast.success(data.message || "Password reset link sent to your email");
+        setShowForgotPassword(false);
+        setForgotEmail("");
+      } else {
+        toast.error(data.message || "Failed to send reset link");
+      }
+    } catch (error) {
+      console.error("Forgot password error:", error);
+      toast.error("An error occurred. Please try again.");
+    } finally {
+      setForgotLoading(false);
+    }
   };
 
   const onSubmitHandler = async (event) => {
@@ -466,6 +528,19 @@ const Login = () => {
               {state === "Sign Up" ? "Create Account" : "Sign In"}
             </button>
 
+            {/* Forgot Password Link */}
+            {state === "Login" && (
+              <div className="mt-4 text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-sm text-primary hover:text-primary/80 hover:underline transition duration-200"
+                >
+                  Forgot Password?
+                </button>
+              </div>
+            )}
+
             {/* Google Sign In */}
             <div className="mt-6">
               <div className="relative">
@@ -511,6 +586,123 @@ const Login = () => {
             </div>
           </div>
         </form>
+
+        {/* Forgot Password Modal */}
+        {showForgotPassword && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative animate-fadeIn">
+              {/* Close button */}
+              <button
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setForgotEmail("");
+                }}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+
+              {/* Modal content */}
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg
+                    className="w-8 h-8 text-primary"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                  Forgot Password?
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Enter your email address and we&apos;ll send you a link to
+                  reset your password.
+                </p>
+              </div>
+
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all"
+                    placeholder="your.email@example.com"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="w-full bg-primary text-white py-3 rounded-lg font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {forgotLoading ? (
+                    <>
+                      <svg
+                        className="animate-spin h-5 w-5"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Sending...
+                    </>
+                  ) : (
+                    "Send Reset Link"
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgotPassword(false);
+                    setForgotEmail("");
+                  }}
+                  className="w-full text-gray-600 py-2 hover:text-gray-800 transition-colors"
+                >
+                  Cancel
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="text-center">

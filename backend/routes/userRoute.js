@@ -9,6 +9,8 @@ import {
   cancelAppointment,
   paymentSuccess,
   firebaseAuth,
+  forgotPassword,
+  resetPassword,
 } from "../controllers/userController.js";
 import authUser from "../middlewares/authUser.js";
 import upload from "../middlewares/multer.js";
@@ -18,6 +20,8 @@ const userRouter = express.Router();
 userRouter.post("/register", registerUser);
 userRouter.post("/login", loginUser);
 userRouter.post("/firebase-auth", firebaseAuth);
+userRouter.post("/forgot-password", forgotPassword);
+userRouter.post("/reset-password", resetPassword);
 
 userRouter.get("/get-profile", authUser, getProfile);
 userRouter.post(

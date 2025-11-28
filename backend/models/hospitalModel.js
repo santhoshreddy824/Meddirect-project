@@ -99,7 +99,7 @@ const hospitalSchema = new mongoose.Schema({
     other: [String]
   },
   doctors: [{
-    doctorId: { type: mongoose.Schema.Types.ObjectId, ref: "Doctor" },
+    doctorId: { type: mongoose.Schema.Types.ObjectId, ref: "doctor" },
     name: { type: String },
     specialization: { type: String },
     experience: { type: Number },

@@ -30,20 +30,22 @@ const HospitalSearch = () => {
   const locationInputRef = useRef(null);
 
   const hospitalService = useMemo(() => new HospitalLocationService(), []);
-  const enrichedSetRef = useRef(new Set());
 
   const getCurrentLocation = async () => {
     setLoading(true);
     try {
       const position = await hospitalService.getCurrentLocation();
       setUserLocation(position);
-      setLocation(
-        `${position.latitude.toFixed(4)}, ${position.longitude.toFixed(4)}`
-      );
+      // Don't overwrite the location input - let user edit it freely
+      if (!location || location.trim() === "") {
+        setLocation(
+          `${position.latitude.toFixed(4)}, ${position.longitude.toFixed(4)}`
+        );
+      }
 
       // Search in database first, then external APIs if needed
       await searchDatabaseHospitals(position.latitude, position.longitude);
-      toast.success("Location found and hospitals loaded!");
+      console.log("Location found and hospitals loaded!");
     } catch (error) {
       toast.error(error.message);
       console.error("Error getting location:", error);
@@ -51,7 +53,6 @@ const HospitalSearch = () => {
       setLoading(false);
     }
   };
-
   const triggerManualSearch = (immediate = false) => {
     if (searchDebounceRef.current) {
       clearTimeout(searchDebounceRef.current);
@@ -103,16 +104,16 @@ const HospitalSearch = () => {
         setHasSearched(true);
 
         if (filteredResults.length === 0) {
-          toast.info(
-            "No hospitals found in the specified area. Try increasing the search radius."
-          );
+          // Avoid noisy popups
+          console.warn("No hospitals found in the specified area");
         } else {
-          toast.success(
-            `Found ${filteredResults.length} hospitals from external sources!`
+          console.log(
+            `Found ${filteredResults.length} hospitals from external sources`
           );
         }
       } catch (error) {
-        toast.error("Error searching for hospitals: " + error.message);
+        // Only log errors; UI already shows empty state
+        console.error("Error searching for hospitals: " + error.message);
         console.error("External hospital search error:", error);
       } finally {
         setLoading(false);
@@ -140,7 +141,8 @@ const HospitalSearch = () => {
         }
 
         const response = await fetch(
-          `${backendUrl}/api/hospital/nearby?${params}`
+          `${backendUrl}/api/hospital/nearby?${params}`,
+          { timeout: 5000 } // 5 second timeout
         );
         const data = await response.json();
 
@@ -158,38 +160,23 @@ const HospitalSearch = () => {
           setHasSearched(true);
 
           if (results.length === 0) {
-            toast.info(
-              "No hospitals found in database. Searching external sources..."
-            );
-            // Fallback to external API search but cap wait time to avoid long blocking
-            const timeoutMs = 6000;
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(
-                () => reject(new Error("External search timed out")),
-                timeoutMs
-              )
-            );
-            try {
-              await Promise.race([
-                searchExternalHospitals(lat, lng),
-                timeoutPromise,
-              ]);
-            } catch (err) {
-              console.warn("External hospital search timeout or error:", err);
-              toast.warn(
-                "External search is taking too long. Try increasing the radius or try again."
-              );
-            }
+            // Quickly fallback to external without blocking
+            console.log("No DB results, trying external sources...");
+            searchExternalHospitals(lat, lng).catch((err) => {
+              console.warn("External search failed:", err);
+            });
           } else {
-            toast.success(`Found ${results.length} hospitals in our database!`);
+            console.log(`Found ${results.length} hospitals in our database`);
           }
         } else {
           throw new Error(data.message || "Failed to fetch hospitals");
         }
       } catch (error) {
         console.error("Database search error:", error);
-        toast.warn("Database search failed. Searching external sources...");
-        await searchExternalHospitals(lat, lng);
+        // Quick fallback without blocking
+        searchExternalHospitals(lat, lng).catch((err) => {
+          console.warn("External search fallback failed:", err);
+        });
       } finally {
         setLoading(false);
       }
@@ -244,108 +231,8 @@ const HospitalSearch = () => {
     handleFilterChange();
   }, [filterType, sortBy, searchRadius, handleFilterChange]);
 
-  // Enrich hospitals lacking any image with backend photo lookup (Google Places)
-  useEffect(() => {
-    const enrich = async () => {
-      if (!backendUrl || !hospitals || hospitals.length === 0) return;
-      const updated = [...hospitals];
-      let changed = false;
-
-      for (let i = 0; i < updated.length; i++) {
-        const h = updated[i];
-        const hasDbImage = Array.isArray(h.images) && h.images.length > 0;
-        const hasPhotos = Array.isArray(h.photos) && h.photos.length > 0;
-        const key =
-          h._id ||
-          h.id ||
-          `${h.name}-${h.address?.city || ""}-${h.location?.latitude || ""}`;
-        if (hasDbImage || hasPhotos || enrichedSetRef.current.has(key))
-          continue;
-
-        try {
-          const name = encodeURIComponent(h.name || "Hospital");
-          const city = encodeURIComponent(h.address?.city || "");
-          const lat =
-            h?.location?.latitude ?? h?.address?.coordinates?.latitude;
-          const lng =
-            h?.location?.longitude ?? h?.address?.coordinates?.longitude;
-          const qs = new URLSearchParams({ name: decodeURIComponent(name) });
-          if (city) qs.append("city", decodeURIComponent(city));
-          if (lat && lng) {
-            qs.append("lat", String(lat));
-            qs.append("lng", String(lng));
-          }
-          qs.append("max", "1");
-
-          const resp = await fetch(
-            `${backendUrl}/api/hospital/photos?${qs.toString()}`
-          );
-          const data = await resp.json();
-          if (
-            data?.success &&
-            Array.isArray(data.photos) &&
-            data.photos.length > 0
-          ) {
-            updated[i] = {
-              ...h,
-              photos: [data.photos[0], ...(h.photos || [])],
-            };
-            changed = true;
-          } else {
-            // Client-side fallback via Google Maps JS PlacesService
-            if (window.google?.maps?.places) {
-              const svc = new window.google.maps.places.PlacesService(
-                document.createElement("div")
-              );
-              const query = [h.name, h?.address?.city, h?.address?.state]
-                .filter(Boolean)
-                .join(", ");
-              await new Promise((resolve) => {
-                svc.textSearch(
-                  {
-                    query,
-                    type: "hospital",
-                    location:
-                      lat && lng
-                        ? new window.google.maps.LatLng(lat, lng)
-                        : undefined,
-                    radius: lat && lng ? 5000 : undefined,
-                  },
-                  (results, status) => {
-                    if (
-                      status ===
-                        window.google.maps.places.PlacesServiceStatus.OK &&
-                      results &&
-                      results.length > 0
-                    ) {
-                      const r0 = results[0];
-                      if (Array.isArray(r0.photos) && r0.photos.length > 0) {
-                        const url = r0.photos[0].getUrl({ maxWidth: 1200 });
-                        if (url) {
-                          updated[i] = {
-                            ...h,
-                            photos: [url, ...(h.photos || [])],
-                          };
-                          changed = true;
-                        }
-                      }
-                    }
-                    resolve();
-                  }
-                );
-              });
-            }
-          }
-          enrichedSetRef.current.add(key);
-        } catch {
-          // swallow
-        }
-      }
-
-      if (changed) setHospitals(updated);
-    };
-    enrich();
-  }, [hospitals, backendUrl]);
+  // Simplified: Don't enrich images automatically - rely on what comes from API
+  // This speeds up rendering significantly
 
   const getHospitalImageUrl = (hospital) => {
     try {
@@ -355,7 +242,6 @@ const HospitalSearch = () => {
         Array.isArray(hospital.images) &&
         hospital.images.length > 0
       ) {
-        // Normalize entries to objects with url
         const imgs = hospital.images
           .map((img) => (typeof img === "string" ? { url: img } : img))
           .filter((img) => img && (img.url || img.secure_url));
@@ -366,34 +252,39 @@ const HospitalSearch = () => {
         }
       }
 
-      // 2) Single image fields some APIs might use
-      if (typeof hospital.image === "string") return hospital.image;
-      if (hospital.mainImage && typeof hospital.mainImage === "string")
-        return hospital.mainImage;
-
-      // 3) External photos: could be array of strings or objects
-      if (hospital.photos && hospital.photos.length > 0) {
+      // 2) External photos: prefer first valid photo
+      if (
+        hospital.photos &&
+        Array.isArray(hospital.photos) &&
+        hospital.photos.length > 0
+      ) {
         const p = hospital.photos[0];
-        if (typeof p === "string") return p;
+        if (typeof p === "string" && p.startsWith("http")) return p;
         if (p && typeof p === "object") {
-          // Common fields used by various sources
-          return (
-            p.url ||
-            p.secure_url ||
-            p.photo_url ||
-            p.image_url ||
-            p.link ||
-            null
-          );
+          const url =
+            p.url || p.secure_url || p.photo_url || p.image_url || p.link;
+          if (url && url.startsWith("http")) return url;
         }
       }
 
-      // 4) Last resort placeholder
-      return `https://via.placeholder.com/300x200/4f46e5/ffffff?text=${encodeURIComponent(
-        (hospital.name || "Hospital").split(" ")[0]
+      // 3) Single image field fallback
+      if (
+        typeof hospital.image === "string" &&
+        hospital.image.startsWith("http")
+      )
+        return hospital.image;
+      if (
+        typeof hospital.mainImage === "string" &&
+        hospital.mainImage.startsWith("http")
+      )
+        return hospital.mainImage;
+
+      // 4) Placeholder with hospital name
+      return `https://via.placeholder.com/400x250/4f46e5/ffffff?text=${encodeURIComponent(
+        (hospital.name || "Hospital").substring(0, 20)
       )}`;
     } catch {
-      return `https://via.placeholder.com/300x200/4f46e5/ffffff?text=Hospital`;
+      return `https://via.placeholder.com/400x250/4f46e5/ffffff?text=Hospital`;
     }
   };
 
@@ -691,7 +582,6 @@ const HospitalSearch = () => {
                     triggerManualSearch(true);
                   }
                 }}
-                onBlur={() => triggerManualSearch(false)}
                 placeholder="Enter city, address, or coordinates"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
               />

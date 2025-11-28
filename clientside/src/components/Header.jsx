@@ -1,7 +1,10 @@
 import React from "react";
 import { assets } from "../assets/assets";
+import { useNavigate } from "react-router-dom";  // ← ADD THIS
 
 const Header = () => {
+  const navigate = useNavigate();  // ← ADD THIS
+
   return (
     <div className="flex flex-col md:flex-row flex-wrap bg-primary rounded-lg px-6 md:px-10 lg:px-20">
       {/* ------- Left Side ------- */}
@@ -17,13 +20,18 @@ const Header = () => {
             hassle-free with MedDirect.
           </p>
         </div>
-        <a
-          href="#speciality"
+        
+        <button
+          type="button"
+          onClick={() => {
+            navigate("/doctors");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
           className="flex items-center gap-2 bg-white px-8 py-3 rounded-full text-gray-600 text-sm m-auto md:m-0 hover:scale-105 transition-all duration-300"
         >
           Book appointment{" "}
           <img className="w-3" src={assets.arrow_icon} alt="" />
-        </a>
+        </button>
       </div>
 
       {/* ------- Right Side ------- */}

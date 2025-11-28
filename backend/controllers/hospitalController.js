@@ -1,4 +1,5 @@
 import hospitalModel from "../models/hospitalModel.js";
+import doctorModel from "../models/doctorModel.js";
 import { v2 as cloudinary } from "cloudinary";
 import fetch from "node-fetch";
 

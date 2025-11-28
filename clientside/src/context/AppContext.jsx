@@ -101,7 +101,7 @@ const AppContextProvider = (props) => {
       if (data.success) {
         setUserData(data.user);
       } else {
-        // If token is invalid, clear it and log out user
+        // Only show toast for session expiry or critical errors
         if (
           data.message === "invalid signature" ||
           data.message.includes("invalid") ||
@@ -111,7 +111,8 @@ const AppContextProvider = (props) => {
           clearInvalidToken();
           toast.error("Session expired. Please login again.");
         } else {
-          toast.error(data.message);
+          // Suppress non-critical error popups
+          console.warn("Profile load error:", data.message);
         }
       }
     } catch (error) {
@@ -129,7 +130,8 @@ const AppContextProvider = (props) => {
         clearInvalidToken();
         toast.error("Session expired. Please login again.");
       } else {
-        toast.error(error.message);
+        // Suppress non-critical error popups
+        console.warn("Profile load error:", error.message);
       }
     }
   }, [backendUrl, token, clearInvalidToken]);

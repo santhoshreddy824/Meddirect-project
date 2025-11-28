@@ -1,8 +1,11 @@
 import { assets } from "../assets/assets";
 import { useNavigate } from "react-router-dom";
+import { useContext } from "react";
+import { AppContext } from "../context/AppContext";
 
 const Banner = () => {
   const navigate = useNavigate();
+  const { token } = useContext(AppContext);
 
   return (
     <div className="flex bg-primary rounded-lg px-6 sm:px-10 md:px-14 lg:px-12 my-20 md:mx-10">
@@ -13,9 +16,16 @@ const Banner = () => {
           <p className="mt-4">With 100+ Trusted Doctors</p>
         </div>
         <button
-          onClick={() => {
-            navigate("/doctors");
-            scrollTo(0, 0);
+          onClick={(e) => {
+            // Prevent any default anchor/hash behavior and stop bubbling
+            e.preventDefault();
+            e.stopPropagation();
+            if (token) {
+              navigate("/doctors");
+            } else {
+              navigate("/login");
+            }
+            window.scrollTo({ top: 0, behavior: "smooth" });
           }}
           className="bg-white text-sm sm:text-base text-gray-600 px-8 py-3 rounded-full mt-6 hover:scale-105 transition-all"
         >

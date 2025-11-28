@@ -7,6 +7,10 @@ import doctorModel from "../models/doctorModel.js";
 import appointmentModel from "../models/appointmentModel.js";
 import { verifyFirebaseToken } from "../config/firebase-admin.js";
 import axios from "axios";
+import loginEventModel from "../models/loginEventModel.js";
+import passwordResetModel from "../models/passwordResetModel.js";
+import crypto from "crypto";
+import { sendPasswordResetEmail, sendPasswordResetConfirmation } from "../utils/emailService.js";
 
 // Function to verify reCAPTCHA
 const verifyCaptcha = async (captchaToken) => {
@@ -103,8 +107,36 @@ const loginUser = async (req, res) => {
 
     if (isMatch) {
       const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+      // Record login event
+      try {
+        await loginEventModel.create({
+          userId: String(user._id),
+          email: user.email,
+          name: user.name,
+          method: "password",
+          success: true,
+          ip: req.headers["x-forwarded-for"]?.split(",")[0] || req.ip,
+          userAgent: req.headers["user-agent"],
+        });
+      } catch (e) {
+        console.warn("Login event (password) record failed:", e.message);
+      }
       res.json({ success: true, token });
     } else {
+      // Record failed attempt
+      try {
+        await loginEventModel.create({
+          userId: user ? String(user._id) : undefined,
+          email,
+          name: user?.name,
+          method: "password",
+          success: false,
+          ip: req.headers["x-forwarded-for"]?.split(",")[0] || req.ip,
+          userAgent: req.headers["user-agent"],
+        });
+      } catch (e) {
+        console.warn("Login event (password fail) record failed:", e.message);
+      }
       res.json({ success: false, message: "Invalid credentials" });
     }
   } catch (error) {
@@ -433,6 +465,22 @@ const firebaseAuth = async (req, res) => {
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
 
     console.log("✅ Firebase authentication successful for:", email);
+    // Record login event
+    try {
+      await loginEventModel.create({
+        userId: String(user._id),
+        email: user.email,
+        name: user.name,
+        method: "google",
+        success: true,
+        ip: req.headers["x-forwarded-for"]?.split(",")[0] || req.ip,
+        userAgent: req.headers["user-agent"],
+        meta: { firebaseUid },
+      });
+    } catch (e) {
+      console.warn("Login event (google) record failed:", e.message);
+    }
+
     res.json({ 
       success: true, 
       token,
@@ -447,10 +495,157 @@ const firebaseAuth = async (req, res) => {
 
   } catch (error) {
     console.log("❌ Firebase auth error:", error);
+    // Attempt to record failed google auth
+    try {
+      const { email, firebaseUid } = req.body || {};
+      await loginEventModel.create({
+        email,
+        method: "google",
+        success: false,
+        ip: req.headers["x-forwarded-for"]?.split(",")[0] || req.ip,
+        userAgent: req.headers["user-agent"],
+        meta: { firebaseUid, error: error?.message },
+      });
+    } catch (e) {
+      console.warn("Login event (google fail) record failed:", e.message);
+    }
     res.json({ 
       success: false, 
       message: "Firebase authentication failed. Please try again." 
     });
+  }
+};
+
+// API for forgot password - send reset email
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.json({ success: false, message: "Email is required" });
+    }
+
+    // Validate email format
+    if (!validator.isEmail(email)) {
+      return res.json({ success: false, message: "Invalid email format" });
+    }
+
+    // Check if user exists
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      // Don't reveal if user exists or not for security
+      return res.json({ 
+        success: true, 
+        message: "If an account exists with this email, you will receive a password reset link shortly." 
+      });
+    }
+
+    // Generate secure random token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Set expiry to 1 hour from now
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    // Delete any existing unused reset tokens for this user
+    await passwordResetModel.deleteMany({ userId: user._id, used: false });
+
+    // Create new reset token
+    await passwordResetModel.create({
+      userId: user._id,
+      email: user.email,
+      token: hashedToken,
+      expiresAt,
+      used: false
+    });
+
+    // Send reset email
+    try {
+      await sendPasswordResetEmail(user.email, resetToken, user.name);
+      console.log(`✅ Password reset email sent to: ${user.email}`);
+    } catch (emailError) {
+      console.error('❌ Failed to send reset email:', emailError);
+      // Continue anyway - token is created
+    }
+
+    res.json({ 
+      success: true, 
+      message: "If an account exists with this email, you will receive a password reset link shortly." 
+    });
+
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    res.json({ success: false, message: "An error occurred. Please try again." });
+  }
+};
+
+// API for reset password - verify token and update password
+const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.json({ success: false, message: "Token and new password are required" });
+    }
+
+    // Validate password strength
+    if (newPassword.length < 8) {
+      return res.json({ success: false, message: "Password must be at least 8 characters long" });
+    }
+
+    // Hash the token to compare with stored hash
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find valid reset token
+    const resetRecord = await passwordResetModel.findOne({
+      token: hashedToken,
+      used: false,
+      expiresAt: { $gt: new Date() }
+    });
+
+    if (!resetRecord) {
+      return res.json({ 
+        success: false, 
+        message: "Invalid or expired reset link. Please request a new password reset." 
+      });
+    }
+
+    // Find user
+    const user = await userModel.findById(resetRecord.userId);
+    if (!user) {
+      return res.json({ success: false, message: "User not found" });
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update user password
+    user.password = hashedPassword;
+    await user.save();
+
+    // Mark token as used
+    resetRecord.used = true;
+    await resetRecord.save();
+
+    // Send confirmation email
+    try {
+      await sendPasswordResetConfirmation(user.email, user.name);
+    } catch (emailError) {
+      console.error('Failed to send confirmation email:', emailError);
+      // Don't fail the request if confirmation email fails
+    }
+
+    console.log(`✅ Password successfully reset for user: ${user.email}`);
+
+    res.json({ 
+      success: true, 
+      message: "Password has been reset successfully. You can now log in with your new password." 
+    });
+
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.json({ success: false, message: "An error occurred. Please try again." });
   }
 };
 
@@ -464,4 +659,6 @@ export {
   cancelAppointment,
   paymentSuccess,
   firebaseAuth,
+  forgotPassword,
+  resetPassword,
 };

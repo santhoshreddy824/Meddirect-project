@@ -43,6 +43,8 @@ const MedicationGuide = () => {
       genericName: "Acetaminophen",
       brand: "Tylenol, Panadol, Calpol",
       category: "Pain Reliever",
+      image:
+        "https://rximage.nlm.nih.gov/image/images/gallery/original/00378-2029-01_RXNAVIMAGE10_B97B0A34.jpg",
       description:
         "A common pain reliever and fever reducer. Works by blocking pain signals in the brain and reducing fever through action on the brain's temperature control center.",
       dosage:
@@ -67,6 +69,8 @@ const MedicationGuide = () => {
       genericName: "Ibuprofen",
       brand: "Advil, Motrin, Nurofen",
       category: "NSAID",
+      image:
+        "https://rximage.nlm.nih.gov/image/images/gallery/original/50580-0506-06_RXNAVIMAGE10_95626C8D.jpg",
       description:
         "Anti-inflammatory pain reliever that reduces inflammation, pain, and fever by blocking COX enzymes.",
       dosage:
@@ -92,6 +96,8 @@ const MedicationGuide = () => {
       genericName: "Acetylsalicylic Acid",
       brand: "Bayer, Ecotrin, Bufferin",
       category: "NSAID",
+      image:
+        "https://rximage.nlm.nih.gov/image/images/gallery/original/00280-0111-10_RXNAVIMAGE10_5E2F8B96.jpg",
       description:
         "Pain reliever and blood thinner that reduces inflammation and prevents blood clots.",
       dosage:
@@ -532,6 +538,20 @@ const MedicationGuide = () => {
                   <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-100/50 to-purple-100/50 rounded-bl-full -translate-y-10 translate-x-10 group-hover:translate-x-8 group-hover:-translate-y-8 transition-transform duration-500"></div>
 
                   <div className="relative">
+                    {/* Medicine Image */}
+                    {medication.image && (
+                      <div className="mb-4 overflow-hidden rounded-xl bg-gray-50 flex items-center justify-center h-48 border-2 border-blue-100/50">
+                        <img
+                          src={medication.image}
+                          alt={medication.name}
+                          className="w-full h-full object-contain p-4 group-hover:scale-110 transition-transform duration-300"
+                          onError={(e) => {
+                            e.target.style.display = "none";
+                          }}
+                        />
+                      </div>
+                    )}
+
                     <div className="flex items-center mb-6">
                       <div className="w-14 h-10 bg-gradient-to-br from-blue-100 to-purple-100 rounded-xl mr-4 flex items-center justify-center text-blue-600 font-bold text-lg border-2 border-blue-200/50 group-hover:scale-110 transition-transform duration-300">
                         {medication.name.charAt(0)}

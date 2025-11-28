@@ -1,20 +1,128 @@
-import { useState, useContext } from "react";
+import { useState, useContext, useEffect, useRef, useCallback } from "react";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { AppContext } from "../context/AppContext";
-import { signInWithGooglePopup } from "../services/firebase";
+import {
+  signInWithGooglePopup,
+  signInWithGoogleRedirect,
+  getGoogleRedirectResult,
+} from "../services/firebase";
 
 const FirebaseGoogleSignIn = ({ userType = "user" }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [redirectAttempted, setRedirectAttempted] = useState(false);
+  const processingRedirectRef = useRef(false);
   const navigate = useNavigate();
   const { setToken, backendUrl } = useContext(AppContext);
 
-  // Only show for user type (patients)
-  if (userType !== "user") {
-    return null;
-  }
+  // Flag for rendering controls (avoid early return before hooks)
+  const isUserType = userType === "user";
+
+  // Centralized backend exchange after Firebase user acquisition
+  const finalizeAuth = useCallback(
+    async (user) => {
+      // Validate required user data
+      if (!user.email) {
+        throw new Error(
+          "Email not provided by Google. Please try a different sign-in method."
+        );
+      }
+
+      // Get Firebase ID token
+      const idToken = await user.getIdToken();
+      console.log("🔑 Firebase ID token obtained");
+
+      // Prepare user data for backend
+      const userData = {
+        firebaseUid: user.uid,
+        name: user.displayName || "Google User",
+        email: user.email,
+        imageUrl: user.photoURL || null,
+        idToken: idToken, // Firebase ID token for verification
+      };
+
+      console.log(
+        "🚀 Sending Firebase user data to backend (popup/redirect)...",
+        {
+          ...userData,
+          idToken: "[HIDDEN]",
+          flow: redirectAttempted ? "redirect" : "popup",
+        }
+      );
+
+      const response = await fetch(`${backendUrl}/api/user/firebase-auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(userData),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Backend response error:", errorText);
+        throw new Error(`Backend error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log("Backend authentication response:", {
+        ...data,
+        token: data.token ? "[RECEIVED]" : "[MISSING]",
+      });
+
+      if (data.success) {
+        localStorage.setItem("token", data.token);
+        setToken(data.token);
+        toast.success(`Welcome ${data.user?.name || userData.name}! 🎉`);
+        console.log(
+          "🎉 Google Sign-In completed successfully via",
+          redirectAttempted ? "redirect" : "popup"
+        );
+        navigate("/");
+      } else {
+        throw new Error(data.message || "Authentication failed");
+      }
+    },
+    [redirectAttempted, backendUrl, setToken, navigate]
+  );
+
+  // Decide strategy: prefer redirect on mobile/iOS Safari for reliability
+  const shouldUseRedirectFirst = () => {
+    const ua = navigator.userAgent;
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
+    const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium/i.test(ua);
+    // iOS Safari + some Android WebViews are very picky with popups
+    return isMobile || isSafari;
+  };
+
+  // Process redirect result if we have returned from a redirect flow
+  useEffect(() => {
+    const processRedirect = async () => {
+      if (processingRedirectRef.current) return;
+      processingRedirectRef.current = true;
+      try {
+        setIsLoading(true);
+        const redirectResult = await getGoogleRedirectResult();
+        if (redirectResult && redirectResult.user) {
+          console.group("🔄 Firebase redirect result");
+          console.log("UID", redirectResult.user.uid);
+          console.log("Email", redirectResult.user.email);
+          console.groupEnd();
+          setRedirectAttempted(true);
+          await finalizeAuth(redirectResult.user);
+        }
+      } catch (err) {
+        if (err?.code === "auth/no-auth-event") {
+          // Normal when no redirect happened
+        } else {
+          console.error("Redirect processing error", err);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    processRedirect();
+  }, [finalizeAuth]);
 
   const handleGoogleSignIn = async (isRetry = false) => {
     try {
@@ -39,7 +147,16 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
         );
       }
 
-      // Sign in with Firebase Google popup
+      // Decide initial strategy
+      if (!isRetry && shouldUseRedirectFirst()) {
+        console.log("📱 Using redirect flow due to mobile/Safari environment");
+        setRedirectAttempted(true);
+        toast.info("Redirecting to Google...", { autoClose: 1500 });
+        await signInWithGoogleRedirect();
+        return; // Flow continues after redirect
+      }
+
+      // Sign in with Firebase Google popup (primary attempt on desktop)
       const result = await signInWithGooglePopup();
 
       if (!result || !result.user) {
@@ -57,64 +174,7 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
 
       // Reset retry count on success
       setRetryCount(0);
-
-      // Validate required user data
-      if (!user.email) {
-        throw new Error(
-          "Email not provided by Google. Please try a different sign-in method."
-        );
-      }
-
-      // Get Firebase ID token
-      const idToken = await user.getIdToken();
-      console.log("🔑 Firebase ID token obtained");
-
-      // Prepare user data for backend
-      const userData = {
-        firebaseUid: user.uid,
-        name: user.displayName || "Google User",
-        email: user.email,
-        imageUrl: user.photoURL || null,
-        idToken: idToken, // Firebase ID token for verification
-      };
-
-      console.log("🚀 Sending Firebase user data to backend...", {
-        ...userData,
-        idToken: "[HIDDEN]",
-      });
-
-      // Send to your backend for verification and user creation/login
-      const response = await fetch(`${backendUrl}/api/user/firebase-auth`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userData),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Backend response error:", errorText);
-        throw new Error(`Backend error: ${response.status} - ${errorText}`);
-      }
-
-      const data = await response.json();
-      console.log("Backend authentication response:", {
-        ...data,
-        token: data.token ? "[RECEIVED]" : "[MISSING]",
-      });
-
-      if (data.success) {
-        // Store your app's JWT token
-        localStorage.setItem("token", data.token);
-        setToken(data.token);
-
-        toast.success(`Welcome ${data.user?.name || userData.name}! 🎉`);
-        console.log("🎉 Google Sign-In completed successfully");
-        navigate("/");
-      } else {
-        throw new Error(data.message || "Authentication failed");
-      }
+      await finalizeAuth(user);
     } catch (error) {
       console.error("❌ Firebase Google Sign-In error:", error);
 
@@ -140,6 +200,18 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
           "Pop-up was blocked by your browser. Please allow pop-ups for this site and try again.";
         showRetryOption = true;
         toast.warn(errorMessage, { autoClose: 6000 });
+        // Attempt redirect fallback if not yet tried
+        if (!redirectAttempted) {
+          console.log("⚠️ Popup blocked, attempting redirect fallback...");
+          setRedirectAttempted(true);
+          toast.info("Switching to redirect sign-in...");
+          try {
+            await signInWithGoogleRedirect();
+            return;
+          } catch (redirErr) {
+            console.error("Redirect fallback failed", redirErr);
+          }
+        }
       } else if (error.code === "auth/network-request-failed") {
         errorMessage = "Network error. Please check your internet connection.";
         showRetryOption = true;
@@ -157,6 +229,21 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
         showRetryOption = true;
       }
 
+      // If multiple popup closures -> redirect fallback
+      if (retryCount >= 2 && !redirectAttempted) {
+        console.log(
+          "🔁 Multiple popup closures, auto-switching to redirect flow"
+        );
+        setRedirectAttempted(true);
+        try {
+          toast.info("Redirecting to Google sign-in...");
+          await signInWithGoogleRedirect();
+          return;
+        } catch (redirErr) {
+          console.error("Redirect attempt failed", redirErr);
+        }
+      }
+
       if (!showRetryOption || retryCount >= 2) {
         toast.error(errorMessage);
       }
@@ -165,7 +252,7 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
     }
   };
 
-  return (
+  return isUserType ? (
     <div className="w-full space-y-2">
       <button
         type="button"
@@ -201,7 +288,7 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
       </button>
 
       {/* Retry button for cancelled attempts */}
-      {retryCount > 0 && retryCount < 3 && !isLoading && (
+      {retryCount > 0 && retryCount < 3 && !isLoading && !redirectAttempted && (
         <button
           type="button"
           onClick={() => handleGoogleSignIn(true)}
@@ -220,13 +307,20 @@ const FirebaseGoogleSignIn = ({ userType = "user" }) => {
               d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
             />
           </svg>
-          Try Google Sign-In Again
+          Try Google Sign-In Again (Popup)
         </button>
+      )}
+
+      {redirectAttempted && !isLoading && (
+        <p className="text-xs text-gray-500 text-center">
+          Redirect flow activated. If nothing happens, ensure this domain is
+          authorized in your Firebase console.
+        </p>
       )}
 
       {/* Status helper text removed per request */}
     </div>
-  );
+  ) : null;
 };
 
 FirebaseGoogleSignIn.propTypes = {

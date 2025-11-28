@@ -5,6 +5,7 @@ import doctorModel from "../models/doctorModel.js";
 import jwt from "jsonwebtoken";
 import appointmentModel from "../models/appointmentModel.js";
 import userModel from "../models/userModel.js";
+import loginEventModel from "../models/loginEventModel.js";
 
 // API for adding doctor
 const addDoctor = async (req, res) => {
@@ -178,15 +179,46 @@ const adminDashboard = async (req, res) => {
     const doctors = await doctorModel.find({});
     const users = await userModel.find({});
     const appointments = await appointmentModel.find({});
+    const lastLogins = await loginEventModel
+      .find({ success: true })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean();
 
     const dashData = {
       doctors: doctors.length,
       appointments: appointments.length,
       patients: users.length,
       latestAppointments: appointments.reverse().slice(0, 5),
+      latestLogins: lastLogins,
     };
 
     res.json({ success: true, dashData });
+  } catch (error) {
+    console.log(error);
+    res.json({ success: false, message: error.message });
+  }
+};
+
+// List login events for admin with pagination and filters
+const listLoginEvents = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page || req.body.page || 1, 10);
+    const limit = Math.min(parseInt(req.query.limit || req.body.limit || 20, 10), 100);
+    const skip = (page - 1) * limit;
+
+    const { email, method, success } = { ...req.query, ...req.body };
+    const filter = {};
+    if (email) filter.email = email;
+    if (method) filter.method = method;
+    if (typeof success !== 'undefined') filter.success = success === true || success === 'true';
+
+    const [items, total] = await Promise.all([
+      loginEventModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      loginEventModel.countDocuments(filter),
+    ]);
+
+    res.json({ success: true, items, page, limit, total });
   } catch (error) {
     console.log(error);
     res.json({ success: false, message: error.message });
@@ -200,4 +232,5 @@ export {
   appointmentsAdmin,
   appointmentCancel,
   adminDashboard,
+  listLoginEvents,
 };

@@ -118,10 +118,16 @@ const Doctors = () => {
           {filterDoc.map((item, index) => (
             <div
               onClick={() => navigate(`/appointment/${item._id}`)}
-              className="border border-blue-200 rounded-xl overflow-hidden cursor-pointer hover:translate-y-[-10px] transition-all duration-500"
+              className="border border-blue-200 rounded-xl overflow-hidden cursor-pointer hover:translate-y-[-10px] transition-all duration-500 bg-white flex flex-col"
               key={index}
             >
-              <DoctorImage doctor={item} className="bg-blue-50" />
+              {/* Fixed image area for uniform card size */}
+              <div className="w-full h-48 sm:h-56 md:h-60 bg-blue-50">
+                <DoctorImage
+                  doctor={item}
+                  className="w-full h-full object-cover"
+                />
+              </div>
               <div className="p-4">
                 <div
                   className={`flex items-center gap-2 text-sm text-center ${
